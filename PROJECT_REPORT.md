@@ -35,7 +35,7 @@ ARCHS：armv7
 
 ### 4.1 GitHub Actions
 
-- 最近成功运行：`run 42578619132`（commit `730ca16`），结论 `success`
+- 最近成功运行：`run 42579558569`（commit `5d42d6c`），结论 `success`
 - Workflow：`.github/workflows/build-ios.yml`，`runs-on: macos-15`
 - 修复过的两个真实构建问题：
   1. `runs-on: macos-13` 已下线 → 任务长期 `queued` 无 runner，改为 `macos-15`
@@ -47,18 +47,20 @@ ARCHS：armv7
 ### 4.2 包级验证（`inspect_ipa.py --expect-arch armv7`）
 
 ```text
-IPA: artifacts/verified-ipas/FuoEvolve9-v1.0.0-build1-armv7.ipa
-size=13344 sha256=2B02CA586C6377E437C2ED609DA49F0D72EFD2C81FA2BDAFC1463EC52318F22B
-bundle=com.feeluown.fuoevolve9 version=1.0.0 build=1 minOS=9.0
+IPA: artifacts/verified-ipas/FuoEvolve9-v1.0.0-build2-armv7.ipa
+size=13370 sha256=5C30B4E5C276AD3393CFC54525A42F90B7E786D7413910248442AEF705A87373
+bundle=com.feeluown.fuoevolve9 version=1.0.0 build=2 minOS=9.0
 architectures=armv7 (cpu=12, subtype=9)
 RESULT: OK
 ```
+
+IPA 内容：`Payload/FuoEvolve9.app/{FuoEvolve9, Info.plist}`，`UIDeviceFamily=[1]`。
 
 ### 4.3 发布
 
 | 平台 | Release | 附件 | 公开下载校验 |
 |---|---|---|---|
-| GitHub | v1.0.0 (id 438835569) | `FuoEvolve9.ipa` 13344 B | **通过**，下载 SHA256 与本地一致 |
+| GitHub | v1.0.0 (id 438835569) | `FuoEvolve9.ipa` 13370 B | **通过**，下载 SHA256 与 build 2 一致 |
 | Gitee | v1.0.0 (id 1290189) | `FuoEvolve9.ipa` | 附件已上传；本机网络请求被 Gitee WAF 返回 403，**未完成公开下载校验** |
 
 - 下载地址
