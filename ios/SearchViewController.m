@@ -1,5 +1,9 @@
 #import "SearchViewController.h"
 #import "PlayerViewController.h"
+#import "FEProviderManager.h"
+#import "FETrack.h"
+#import "FEPlayerManager.h"
+#import "FELyricsManager.h"
 
 @interface SearchViewController ()
 @property (nonatomic, strong) UITextField *searchField;
@@ -18,7 +22,7 @@
     
     self.searchField = [[UITextField alloc] initWithFrame:CGRectMake(20, 80, self.view.frame.size.width - 100, 30)];
     self.searchField.borderStyle = UITextBorderStyleRoundedRect;
-    self.searchField.placeholder = @"搜索网易云音乐";
+    self.searchField.placeholder = [NSString stringWithFormat:@"搜索 - %@", [FEProviderManager sharedManager].currentProvider.providerName];
     self.searchField.delegate = self;
     [self.view addSubview:self.searchField];
     
@@ -36,14 +40,19 @@
 
 - (void)doSearch {
     [self.searchField resignFirstResponder];
-    [self.results removeAllObjects];
+    NSString *keyword = self.searchField.text;
+    if (keyword.length == 0) return;
     
-    // 模拟搜索结果
-    [self.results addObject:@{@"title": @"晴天", @"artist": @"周杰伦", @"album": @"叶惠美"}];
-    [self.results addObject:@{@"title": @"稻香", @"artist": @"周杰伦", @"album": @"魔杰座"}];
-    [self.results addObject:@{@"title": @"青花瓷", @"artist": @"周杰伦", @"album": @"我很忙"}];
-    
-    [self.tableView reloadData];
+    id<FEProviderProtocol> provider = [FEProviderManager sharedManager].currentProvider;
+    if ([provider respondsToSelector:@selector(searchWithKeyword:completion:)]) {
+        [provider searchWithKeyword:keyword completion:^(NSArray<FETrack *> *tracks, NSError *error) {
+            [self.results removeAllObjects];
+            [self.results addObjectsFromArray:tracks];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.tableView reloadData];
+            });
+        }];
+    }
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)textField {
@@ -61,17 +70,51 @@
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:CellId];
     }
-    NSDictionary *item = self.results[indexPath.row];
-    cell.textLabel.text = item[@"title"];
-    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@", item[@"artist"], item[@"album"]];
+    id item = self.results[indexPath.row];
+    if ([item isKindOfClass:[FETrack class]]) {
+        FETrack *track = (FETrack *)item;
+        cell.textLabel.text = track.title;
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@", track.artist ?: @"", track.album ?: @""];
+    } else if ([item isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *dict = item;
+        cell.textLabel.text = dict[@"title"];
+        cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %@", dict[@"artist"], dict[@"album"]];
+    }
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    PlayerViewController *playerVC = [[PlayerViewController alloc] init];
-    playerVC.trackInfo = self.results[indexPath.row];
-    [self.navigationController pushViewController:playerVC animated:YES];
+    id item = self.results[indexPath.row];
+    if ([item isKindOfClass:[FETrack class]]) {
+        FETrack *track = (FETrack *)item;
+        id<FEProviderProtocol> provider = [FEProviderManager sharedManager].currentProvider;
+        if ([provider respondsToSelector:@selector(getPlayUrlForTrack:completion:)]) {
+            [provider getPlayUrlForTrack:track completion:^(NSString *playUrl, NSError *error) {
+                if (playUrl) {
+                    track.playUrl = playUrl;
+                }
+                if ([provider respondsToSelector:@selector(getLyricForTrack:completion:)]) {
+                    [provider getLyricForTrack:track completion:^(NSString *lyric, NSError *error) {
+                        if (lyric) {
+                            [[FELyricsManager sharedManager] parseLRC:lyric];
+                        }
+                    }];
+                }
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [[FEPlayerManager sharedManager] playTrack:track];
+                    [self.navigationController popToRootViewControllerAnimated:YES];
+                });
+            }];
+        } else {
+            [[FEPlayerManager sharedManager] playTrack:track];
+            [self.navigationController popToRootViewControllerAnimated:YES];
+        }
+    } else {
+        PlayerViewController *playerVC = [[PlayerViewController alloc] init];
+        playerVC.trackInfo = item;
+        [self.navigationController pushViewController:playerVC animated:YES];
+    }
 }
 
 @end
