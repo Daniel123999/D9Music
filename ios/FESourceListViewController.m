@@ -19,6 +19,11 @@
     [self.view addSubview:self.tableView];
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.tableView reloadData];
+}
+
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return [FEProviderManager sharedManager].providers.count;
 }
@@ -54,7 +59,7 @@
         [self.tableView reloadData];
         [self.navigationController popViewControllerAnimated:YES];
     } else {
-        FELoginWebViewController *loginVC = [[FELoginWebViewController alloc] init];
+        FELoginViewController *loginVC = [[FELoginViewController alloc] init];
         loginVC.provider = provider;
         [self.navigationController pushViewController:loginVC animated:YES];
     }
