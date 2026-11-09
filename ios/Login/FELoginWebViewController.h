@@ -1,7 +1,7 @@
-#import <UIKit/UIKit.h>
+#import "FELoginWebViewController.h"
 #import "FEProviderProtocol.h"
 
-@interface FELoginWebViewController : UIViewController <UIWebViewDelegate>
+@interface FELoginViewController : UIViewController <UITextViewDelegate>
 
 @property (nonatomic, strong) id<FEProviderProtocol> provider;
 
