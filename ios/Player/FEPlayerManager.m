@@ -1,4 +1,5 @@
 #import "FEPlayerManager.h"
+#import "FEProviderManager.h"
 
 @implementation FEPlayerManager
 
@@ -17,10 +18,41 @@
         self.player = [[AVPlayer alloc] init];
         self.playlist = [NSMutableArray array];
         self.currentIndex = -1;
+        self.autoSwitchSourceOnFailure = YES;
         [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryPlayback error:nil];
         [[AVAudioSession sharedInstance] setActive:YES error:nil];
+        
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handlePlayerItemFailed:) name:AVPlayerItemFailedToPlayToEndTimeNotification object:nil];
     }
     return self;
+}
+
+- (void)handlePlayerItemFailed:(NSNotification *)notification {
+    if (self.autoSwitchSourceOnFailure && self.currentTrack) {
+        [self trySwitchSourceForTrack:self.currentTrack];
+    }
+}
+
+- (void)trySwitchSourceForTrack:(FETrack *)track {
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    if (!manager.providers.count) return;
+    
+    // 尝试其他音源
+    for (id<FEProviderProtocol> provider in manager.providers) {
+        if ([provider.providerId isEqualToString:track.providerId]) continue;
+        if ([provider respondsToSelector:@selector(searchWithKeyword:completion:)]) {
+            NSString *keyword = [NSString stringWithFormat:@"%@ %@", track.title ?: @"", track.artist ?: @""];
+            [provider searchWithKeyword:keyword completion:^(NSArray<FETrack *> *tracks, NSError *error) {
+                if (tracks.count > 0) {
+                    FETrack *newTrack = tracks[0];
+                    newTrack.title = track.title;
+                    newTrack.artist = track.artist;
+                    [self playTrack:newTrack];
+                }
+            }];
+            break;
+        }
+    }
 }
 
 - (void)playTrack:(FETrack *)track {
