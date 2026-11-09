@@ -82,6 +82,7 @@ jobs:
         run: |
           make clean || true
           make TARGET=iphone:clang:9.3:9.0 ARCHS=armv7
+          make package TARGET=iphone:clang:9.3:9.0 ARCHS=armv7 FINALPACKAGE=1
 
       - name: Inspect binary
         working-directory: ios
@@ -102,6 +103,8 @@ jobs:
         run: |
           chmod +x make_ipa.sh
           APP_NAME="$APP_NAME" OUTPUT_IPA_NAME="$OUTPUT_IPA_NAME" ./make_ipa.sh
+          echo "--- IPA contents"
+          unzip -l "$OUTPUT_IPA_NAME"
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4

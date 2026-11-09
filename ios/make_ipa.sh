@@ -10,10 +10,10 @@ find_app() {
     local candidate
     for candidate in \
         "${1:-}" \
-        ".theos/obj/${APP_DIR}" \
-        ".theos/obj/iphoneos/${APP_DIR}" \
-        ".theos/obj/debug/${APP_DIR}" \
         ".theos/_/Applications/${APP_DIR}" \
+        ".theos/obj/iphoneos/${APP_DIR}" \
+        ".theos/obj/${APP_DIR}" \
+        ".theos/obj/debug/${APP_DIR}" \
         "${APP_DIR}"; do
         if [ -n "$candidate" ] && [ -d "$candidate" ]; then
             printf '%s\n' "$candidate"
