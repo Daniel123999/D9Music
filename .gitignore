@@ -1,0 +1,13 @@
+.theos/
+*.ipa
+*.deb
+artifacts/
+.DS_Store
+*.swp
+*~
+node_modules/
+__pycache__/
+*.pyc
+config.json
+*.token
+.keys/
