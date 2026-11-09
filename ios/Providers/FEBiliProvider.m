@@ -64,7 +64,7 @@
         headers = @{@"User-Agent": @"Mozilla/5.0", @"Referer": @"https://www.bilibili.com/", @"Cookie": self.cookieString};
     }
     [FEHttpRequest GET:url headers:headers completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
-        NSString *playUrl = nil;
+        __block NSString *playUrl = nil;
         if (data) {
             NSError *jsonError;
             NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
