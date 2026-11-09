@@ -10,7 +10,7 @@ FuoEvolve9_FILES = $(wildcard *.m) $(wildcard Models/*.m) $(wildcard Providers/*
 FuoEvolve9_FRAMEWORKS = UIKit Foundation CoreFoundation AVFoundation QuartzCore MediaPlayer CoreMedia AudioToolbox
 FuoEvolve9_USE_MODULES = 0
 USE_MODULES = 0
-FuoEvolve9_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-error=deprecated-module-dot-map
+FuoEvolve9_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-error=deprecated-module-dot-map -I. -IModels -IProviders -IPlayer -ILyrics -IPlaylist -ILogin -ILocalMusic -IUtils
 FuoEvolve9_INFOPLIST = $(THEOS_PROJECT_DIR)/Info.plist
 FuoEvolve9_LDFLAGS = -Wl,-undefined,dynamic_lookup
 
