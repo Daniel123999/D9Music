@@ -8,5 +8,10 @@ include $(THEOS)/makefiles/common.mk
 APPLICATION_NAME = FuoEvolve9
 FuoEvolve9_FILES = $(wildcard *.m) $(wildcard Models/*.m) $(wildcard Providers/*.m) $(wildcard Player/*.m) $(wildcard Lyrics/*.m) $(wildcard Playlist/*.m) $(wildcard Login/*.m) $(wildcard LocalMusic/*.m) $(wildcard Utils/*.m)
 FuoEvolve9_FRAMEWORKS = UIKit Foundation CoreFoundation AVFoundation QuartzCore MediaPlayer CoreMedia AudioToolbox
+FuoEvolve9_USE_MODULES = 0
+USE_MODULES = 0
+FuoEvolve9_CFLAGS = -fobjc-arc -fmodules=0 -Wno-deprecated-declarations -Wno-error=deprecated-module-dot-map
+FuoEvolve9_INFOPLIST = $(THEOS_PROJECT_DIR)/Info.plist
+FuoEvolve9_LDFLAGS = -Wl,-undefined,dynamic_lookup
 
 include $(THEOS_MAKE_PATH)/application.mk
