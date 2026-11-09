@@ -1,5 +1,7 @@
 #import "AppDelegate.h"
+#import "FERecommendViewController.h"
 #import "RootViewController.h"
+#import "FEMineViewController.h"
 #import "FEProviderManager.h"
 #import "FENeteaseProvider.h"
 #import "FEQQProvider.h"
@@ -16,11 +18,23 @@
     [[FEProviderManager sharedManager] registerProvider:[[FEQQProvider alloc] init]];
     [[FEProviderManager sharedManager] registerProvider:[[FEBiliProvider alloc] init]];
     
-    RootViewController *rootVC = [[RootViewController alloc] init];
-    UINavigationController *navController = [[UINavigationController alloc] initWithRootViewController:rootVC];
-    navController.navigationBar.translucent = NO;
+    UITabBarController *tabBarController = [[UITabBarController alloc] init];
     
-    self.window.rootViewController = navController;
+    FERecommendViewController *recommendVC = [[FERecommendViewController alloc] init];
+    UINavigationController *recommendNav = [[UINavigationController alloc] initWithRootViewController:recommendVC];
+    recommendNav.tabBarItem.title = @"推荐";
+    
+    RootViewController *libraryVC = [[RootViewController alloc] init];
+    UINavigationController *libraryNav = [[UINavigationController alloc] initWithRootViewController:libraryVC];
+    libraryNav.tabBarItem.title = @"音乐库";
+    
+    FEMineViewController *mineVC = [[FEMineViewController alloc] init];
+    UINavigationController *mineNav = [[UINavigationController alloc] initWithRootViewController:mineVC];
+    mineNav.tabBarItem.title = @"我的";
+    
+    tabBarController.viewControllers = @[recommendNav, libraryNav, mineNav];
+    
+    self.window.rootViewController = tabBarController;
     [self.window makeKeyAndVisible];
     
     return YES;
