@@ -7,6 +7,7 @@
 - (void)playerDidChangeTrack:(FETrack *)track;
 - (void)playerDidUpdateTime:(NSTimeInterval)currentTime duration:(NSTimeInterval)duration;
 - (void)playerDidChangeState:(BOOL)isPlaying;
+- (void)playerDidFail:(FETrack *)track;
 @end
 
 @interface FEPlayerManager : NSObject
@@ -19,6 +20,7 @@
 @property (nonatomic, assign) NSInteger currentIndex;
 @property (nonatomic, assign) BOOL isPlaying;
 @property (nonatomic, weak) id<FEPlayerDelegate> delegate;
+@property (nonatomic, assign) BOOL autoSwitchSourceOnFailure;
 
 - (void)playTrack:(FETrack *)track;
 - (void)play;
@@ -27,5 +29,6 @@
 - (void)next;
 - (void)previous;
 - (void)addToPlaylist:(FETrack *)track;
+- (void)trySwitchSourceForTrack:(FETrack *)track;
 
 @end
