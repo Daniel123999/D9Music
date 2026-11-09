@@ -87,20 +87,133 @@
     }];
 }
 
-- (void)getUserPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion {
-    if (completion) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(@[], nil);
-        });
+- (void)getDailyRecommendSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion {
+    NSString *url = @"https://music.163.com/api/v3/discovery/recommend/songs";
+    NSDictionary *headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0"};
+    if (self.cookieString) {
+        headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0", @"Cookie": self.cookieString};
     }
+    [FEHttpRequest GET:url headers:headers completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSMutableArray *tracks = [NSMutableArray array];
+        if (data) {
+            NSError *jsonError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            NSArray *songs = json[@"data"][@"dailySongs"];
+            for (NSDictionary *song in songs) {
+                FETrack *track = [[FETrack alloc] init];
+                track.trackId = [song[@"id"] stringValue];
+                track.title = song[@"name"];
+                NSArray *artists = song[@"artists"];
+                if (artists.count > 0) {
+                    track.artist = artists[0][@"name"];
+                }
+                track.album = song[@"album"][@"name"];
+                track.providerId = @"netease";
+                track.isLocal = NO;
+                [tracks addObject:track];
+            }
+        }
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(tracks, error);
+            });
+        }
+    }];
+}
+
+- (void)getRadioSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion {
+    NSString *url = @"https://music.163.com/api/v1/radio/get";
+    NSDictionary *headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0"};
+    if (self.cookieString) {
+        headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0", @"Cookie": self.cookieString};
+    }
+    [FEHttpRequest GET:url headers:headers completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSMutableArray *tracks = [NSMutableArray array];
+        if (data) {
+            NSError *jsonError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            NSArray *songs = json[@"data"];
+            for (NSDictionary *song in songs) {
+                FETrack *track = [[FETrack alloc] init];
+                track.trackId = [song[@"id"] stringValue];
+                track.title = song[@"name"];
+                track.artist = song[@"artists"][0][@"name"];
+                track.album = song[@"album"][@"name"];
+                track.providerId = @"netease";
+                track.isLocal = NO;
+                [tracks addObject:track];
+            }
+        }
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(tracks, error);
+            });
+        }
+    }];
+}
+
+- (void)getUserPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion {
+    NSString *url = [NSString stringWithFormat:@"https://music.163.com/api/user/playlist"];
+    NSDictionary *headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0"};
+    if (self.cookieString) {
+        headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0", @"Cookie": self.cookieString};
+    }
+    [FEHttpRequest GET:url headers:headers completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSMutableArray *playlists = [NSMutableArray array];
+        if (data) {
+            NSError *jsonError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            NSArray *list = json[@"playlist"];
+            for (NSDictionary *item in list) {
+                FEPlaylist *playlist = [[FEPlaylist alloc] init];
+                playlist.playlistId = [item[@"id"] stringValue];
+                playlist.name = item[@"name"];
+                playlist.coverUrl = item[@"coverImgUrl"];
+                playlist.providerId = @"netease";
+                playlist.isLocal = NO;
+                [playlists addObject:playlist];
+            }
+        }
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(playlists, error);
+            });
+        }
+    }];
 }
 
 - (void)getPlaylistTracks:(FEPlaylist *)playlist completion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion {
-    if (completion) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(@[], nil);
-        });
+    NSString *url = [NSString stringWithFormat:@"https://music.163.com/api/playlist/detail?id=%@", playlist.playlistId];
+    NSDictionary *headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0"};
+    if (self.cookieString) {
+        headers = @{@"Referer": @"https://music.163.com/", @"User-Agent": @"Mozilla/5.0", @"Cookie": self.cookieString};
     }
+    [FEHttpRequest GET:url headers:headers completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSMutableArray *tracks = [NSMutableArray array];
+        if (data) {
+            NSError *jsonError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            NSArray *songs = json[@"result"][@"tracks"];
+            for (NSDictionary *song in songs) {
+                FETrack *track = [[FETrack alloc] init];
+                track.trackId = [song[@"id"] stringValue];
+                track.title = song[@"name"];
+                NSArray *artists = song[@"artists"];
+                if (artists.count > 0) {
+                    track.artist = artists[0][@"name"];
+                }
+                track.album = song[@"album"][@"name"];
+                track.providerId = @"netease";
+                track.isLocal = NO;
+                [tracks addObject:track];
+            }
+        }
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(tracks, error);
+            });
+        }
+    }];
 }
 
 - (void)handleLoginCookies:(NSDictionary *)cookies {
