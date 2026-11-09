@@ -105,6 +105,8 @@ jobs:
           APP_NAME="$APP_NAME" OUTPUT_IPA_NAME="$OUTPUT_IPA_NAME" ./make_ipa.sh
           echo "--- IPA contents"
           unzip -l "$OUTPUT_IPA_NAME"
+          echo "--- staged layout"
+          ls -la .theos/_/Applications 2>/dev/null || true
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4

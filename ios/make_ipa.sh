@@ -39,6 +39,20 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/Payload"
 cp -R "$APP" "$WORK/Payload/"
 
+# Theos 的 obj 目录只有二进制；IPA 必须自带 Info.plist。
+if [ ! -f "$WORK/Payload/$APP_DIR/Info.plist" ]; then
+    cp "$(pwd)/Info.plist" "$WORK/Payload/$APP_DIR/Info.plist"
+fi
+if [ ! -f "$WORK/Payload/$APP_DIR/Info.plist" ]; then
+    echo "IPA 缺少 Info.plist" >&2
+    exit 1
+fi
+if [ ! -f "$WORK/Payload/$APP_DIR/$APP_NAME" ]; then
+    echo "IPA 缺少可执行文件 $APP_NAME" >&2
+    exit 1
+fi
+chmod +x "$WORK/Payload/$APP_DIR/$APP_NAME"
+
 if command -v ldid >/dev/null 2>&1; then
     BINARY="$WORK/Payload/$APP_DIR/$APP_NAME"
     if [ -f "$BINARY" ]; then
