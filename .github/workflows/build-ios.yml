@@ -1,35 +1,81 @@
-name: Build iOS 9 (Theos)
+name: Build iOS 9 armv7 IPA
 
 on:
   workflow_dispatch:
   push:
-    branches: [ master, main ]
+    branches: [main, master]
+
+env:
+  THEOS: ${{ github.workspace }}/theos
+  APP_NAME: FuoEvolve9
+  ARTIFACT_NAME: FuoEvolve9-ipa
+  IPA_ASSET_NAME: FuoEvolve9.ipa
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: macos-15
     timeout-minutes: 60
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          brew install ldid xz make
+      - name: Install build tools
+        run: brew install ldid xz
 
-      - name: Setup Theos
+      - name: Clone theos
         run: |
-          git clone --recursive https://github.com/theos/theos.git $HOME/theos
-          echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-          echo "PATH=$HOME/theos/bin:$PATH" >> $GITHUB_ENV
+          git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
+          echo "$THEOS/bin" >> "$GITHUB_PATH"
 
-      - name: Download iPhoneOS9.3 SDK
+      - name: Download iPhoneOS9.3 SDK (armv7)
         run: |
-          mkdir -p $HOME/theos/sdks
-          git clone --depth 1 https://github.com/theos/sdks.git /tmp/sdks
-          cp -R /tmp/sdks/iPhoneOS9.3.sdk $HOME/theos/sdks/ || true
-          ls -la $HOME/theos/sdks/
+          rm -rf "$THEOS/sdks"
+          git clone --filter=blob:none --no-checkout --depth 1 \
+            https://github.com/theos/sdks.git "$THEOS/sdks"
+          cd "$THEOS/sdks"
+          git sparse-checkout init --cone
+          git sparse-checkout set iPhoneOS9.3.sdk
+          git checkout
+          ls -1 "$THEOS/sdks"
+
+      - name: Patch iPhoneOS9.3 SDK for modern clang/ld
+        run: |
+          python3 - <<'PY'
+          import os, re, shutil
+          sdk = os.path.join(os.environ["THEOS"], "sdks", "iPhoneOS9.3.sdk")
+
+          jsc = os.path.join(sdk, "System/Library/PrivateFrameworks/JavaScriptCore.framework")
+          if os.path.isdir(jsc):
+              shutil.rmtree(jsc)
+              print("removed private JavaScriptCore.framework")
+
+          patched = 0
+          arch_re = re.compile(r"^archs:\s*\[([^\]]*)\]", re.M)
+          def fix_archs(match):
+              archs = [a.strip() for a in match.group(1).split(",") if a.strip()]
+              keep = [a for a in archs if a not in ("i386", "x86_64")]
+              return "archs:                 [ " + ", ".join(keep) + " ]"
+
+          for dirpath, _, files in os.walk(sdk):
+              for name in files:
+                  if not (name.endswith(".tbd") or name.endswith(".dylib")):
+                      continue
+                  path = os.path.join(dirpath, name)
+                  try:
+                      with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                          text = f.read()
+                  except OSError:
+                      continue
+                  if not text.startswith("---"):
+                      continue
+                  new = text.replace("/usr/lib/system/liblaunch.dylib, ", "")
+                  new = arch_re.sub(fix_archs, new, count=1)
+                  if new != text:
+                      with open(path, "w", encoding="utf-8") as f:
+                          f.write(new)
+                      patched += 1
+          print("patched %d stub files" % patched)
+          PY
 
       - name: Build
         working-directory: ios
@@ -40,25 +86,26 @@ jobs:
       - name: Inspect binary
         working-directory: ios
         run: |
-          BIN="$(find .theos -type f -name FuoEvolve9 -perm -u+x | head -1)"
-          if [ -n "$BIN" ]; then
-            file "$BIN"
-            otool -L "$BIN" || true
-          else
-            echo "Binary not found"
-            exit 1
-          fi
+          BIN="$(find .theos -type f -name "$APP_NAME" -perm -u+x | head -1)"
+          test -n "$BIN"
+          echo "binary: $BIN"
+          file "$BIN"
+          otool -L "$BIN"
+          echo "--- undefined symbol count"
+          nm -u "$BIN" | wc -l
+          if command -v ldid >/dev/null 2>&1; then ldid -e "$BIN" || true; fi
 
-      - name: Package IPA
+      - name: Package unsigned IPA
         working-directory: ios
+        env:
+          OUTPUT_IPA_NAME: ${{ env.IPA_ASSET_NAME }}
         run: |
           chmod +x make_ipa.sh
-          ./make_ipa.sh
-          ls -lh FuoEvolve9.ipa
+          APP_NAME="$APP_NAME" OUTPUT_IPA_NAME="$OUTPUT_IPA_NAME" ./make_ipa.sh
 
-      - name: Upload artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: FuoEvolve9-ipa
-          path: ios/FuoEvolve9.ipa
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ios/${{ env.IPA_ASSET_NAME }}
           if-no-files-found: error
