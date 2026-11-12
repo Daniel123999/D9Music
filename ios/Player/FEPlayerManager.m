@@ -181,6 +181,9 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
 
 - (void)startPlaybackForTrack:(FETrack *)track urlString:(NSString *)urlString {
     NSURL *url = [NSURL URLWithString:urlString];
+    if (url == nil || url.scheme.length == 0) {
+        url = [NSURL fileURLWithPath:urlString];
+    }
     if (url == nil) {
         [self handlePlaybackFailure];
         return;
@@ -302,15 +305,20 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
 
 - (void)trySwitchSourceForTrack:(FETrack *)track {
     if (track == nil || self.isSwitchingSource) return;
+    if (track.isLocal) {
+        [self handlePlaybackFailure];
+        return;
+    }
 
     FEProviderManager *manager = [FEProviderManager sharedManager];
-    id<FEProviderProtocol> candidate = nil;
-    for (id<FEProviderProtocol> provider in manager.providers) {
+    NSMutableArray *candidates = [NSMutableArray array];
+    for (id<FEProviderProtocol> provider in [manager enabledProviders]) {
         if ([provider.providerId isEqualToString:track.providerId]) continue;
         if (![provider respondsToSelector:@selector(searchWithKeyword:completion:)]) continue;
-        candidate = provider;
-        break;
+        [candidates addObject:provider];
     }
+    NSInteger wanted = MAX(0, self.switchAttempt - 1);
+    id<FEProviderProtocol> candidate = wanted < (NSInteger)candidates.count ? candidates[wanted] : nil;
     if (candidate == nil) {
         [self handlePlaybackFailure];
         return;

@@ -4,6 +4,9 @@
 @interface FETheme : NSObject
 
 // 主色板（参考 FuoEvolve 的 Material 风格：紫罗兰 + 粉 + 青）
++ (BOOL)isDarkMode;
++ (void)setDarkMode:(BOOL)darkMode;
+
 + (UIColor *)primary;
 + (UIColor *)primaryDark;
 + (UIColor *)secondary;

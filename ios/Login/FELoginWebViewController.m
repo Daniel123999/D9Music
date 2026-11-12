@@ -1,6 +1,7 @@
 #import "FELoginWebViewController.h"
 #import "FETheme.h"
 #import "FEIconView.h"
+#import "FESettings.h"
 
 @interface FELoginViewController () <UITextViewDelegate>
 
@@ -95,7 +96,14 @@
     [inputCard addSubview:self.cookieTextView];
 
     self.placeholderLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 42, cardWidth - 40, 34)];
-    self.placeholderLabel.text = @"例如：MUSIC_U=xxxx; __csrf=xxxx;\n格式：key1=value1; key2=value2";
+    NSString *providerId = self.provider.providerId ?: @"";
+    if ([providerId isEqualToString:@"qq"]) {
+        self.placeholderLabel.text = @"例如：uin=o0123456789; qm_keyst=xxxx;";
+    } else if ([providerId isEqualToString:@"bilibili"]) {
+        self.placeholderLabel.text = @"例如：SESSDATA=xxxx; bili_jct=xxxx; DedeUserID=xxxx;";
+    } else {
+        self.placeholderLabel.text = @"例如：MUSIC_U=xxxx; __csrf=xxxx;\n格式：key1=value1; key2=value2";
+    }
     self.placeholderLabel.numberOfLines = 2;
     self.placeholderLabel.font = [UIFont systemFontOfSize:11];
     self.placeholderLabel.textColor = [FETheme colorWithHex:0xB9BECD alpha:1.0];
@@ -163,6 +171,9 @@
     if ([self.provider respondsToSelector:@selector(handleLoginCookies:)]) {
         [self.provider handleLoginCookies:cookies];
     }
+
+    [FESettings sharedSettings].lastLoginProviderId = self.provider.providerId ?: @"";
+    [[NSNotificationCenter defaultCenter] postNotificationName:FEAccountDidChangeNotification object:self];
 
     UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"登录信息已保存"
                                                    message:[NSString stringWithFormat:@"已保存 %lu 个 Cookie 字段", (unsigned long)cookies.count]

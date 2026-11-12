@@ -1,9 +1,9 @@
-Package: com.feeluown.fuoevolve9
-Name: FuoEvolve9
-Version: 1.2.0
+Package: com.d9music.app
+Name: D9Music
+Version: 1.3.0
 Architecture: iphoneos-arm
 Description: FeelUOwn-inspired music player for iPhone 4S / iOS 9.3.6 (armv7)
-Maintainer: FuoEvolve9
-Author: FuoEvolve9
+Maintainer: D9Music
+Author: D9Music
 Section: Entertainment
 Depends: firmware (>= 9.0)

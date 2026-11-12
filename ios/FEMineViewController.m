@@ -2,6 +2,7 @@
 #import "FETheme.h"
 #import "FEComponents.h"
 #import "FEIconView.h"
+#import "FEImageView.h"
 #import "FEProviderManager.h"
 #import "FELocalMusicViewController.h"
 #import "FEPlaylistListViewController.h"
@@ -10,18 +11,26 @@
 #import "FERootTabBarController.h"
 #import "FESettingsViewController.h"
 #import "FECurrentPlaylistViewController.h"
+#import "FECloudViewController.h"
 #import "FEFavoriteManager.h"
 #import "FETrackListViewController.h"
 #import "FEPlaylistManager.h"
 #import "FEPlaylist.h"
+#import "FESettings.h"
+#import "FEWebDAVManager.h"
 
-@interface FEMineViewController ()
+@interface FEMineViewController () <UIImagePickerControllerDelegate, UINavigationControllerDelegate>
+
 @property (nonatomic, strong) UIScrollView *scrollView;
+@property (nonatomic, strong) UIImageView *avatarView;
+@property (nonatomic, strong) FEIconView *avatarPlaceholder;
 @property (nonatomic, strong) UILabel *profileNameLabel;
 @property (nonatomic, strong) UILabel *profileStatusLabel;
 @property (nonatomic, strong) UIView *providersCard;
-@property (nonatomic, strong) UIView *statsCard;
 @property (nonatomic, strong) UILabel *statsLabel;
+@property (nonatomic, copy) NSString *resolvedAvatarProviderId;
+@property (nonatomic, strong) NSDate *lastProfileFetchDate;
+
 @end
 
 @implementation FEMineViewController
@@ -33,17 +42,24 @@
 
     self.scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
     self.scrollView.alwaysBounceVertical = YES;
-    self.scrollView.contentInset = UIEdgeInsetsMake(24, 0, 80, 0);
+    self.scrollView.contentInset = UIEdgeInsetsMake(24, 0, 100, 0);
     self.scrollView.showsVerticalScrollIndicator = NO;
     [self.view addSubview:self.scrollView];
 
     [self buildContent];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(accountDidChange:) name:FEAccountDidChangeNotification object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self.navigationController setNavigationBarHidden:YES animated:animated];
     [self refreshAccount];
+    [self refreshAvatarIfNeeded:NO];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -76,11 +92,24 @@
     UIView *avatar = [[UIView alloc] initWithFrame:CGRectMake(18, 28, 54, 54)];
     avatar.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.22];
     avatar.layer.cornerRadius = 27;
+    avatar.clipsToBounds = YES;
     [profile addSubview:avatar];
 
-    FEIconView *avatarIcon = [[FEIconView alloc] initWithFrame:CGRectMake(14, 14, 26, 26) iconType:FEIconTypeUser];
-    avatarIcon.tintColor = [UIColor whiteColor];
-    [avatar addSubview:avatarIcon];
+    self.avatarView = [[UIImageView alloc] initWithFrame:avatar.bounds];
+    self.avatarView.contentMode = UIViewContentModeScaleAspectFill;
+    self.avatarView.layer.cornerRadius = 27;
+    self.avatarView.clipsToBounds = YES;
+    self.avatarView.hidden = YES;
+    [avatar addSubview:self.avatarView];
+
+    self.avatarPlaceholder = [[FEIconView alloc] initWithFrame:CGRectMake(14, 14, 26, 26) iconType:FEIconTypeUser];
+    self.avatarPlaceholder.tintColor = [UIColor whiteColor];
+    [avatar addSubview:self.avatarPlaceholder];
+
+    UIButton *avatarButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    avatarButton.frame = avatar.bounds;
+    [avatarButton addTarget:self action:@selector(avatarTapped) forControlEvents:UIControlEventTouchUpInside];
+    [avatar addSubview:avatarButton];
 
     self.profileNameLabel = [[UILabel alloc] initWithFrame:CGRectMake(84, 26, width - 24 - 120, 24)];
     self.profileNameLabel.text = @"本地用户";
@@ -141,13 +170,13 @@
     // 音源
     [self addSectionTitle:@"音源" y:430];
     self.providersCard = [[UIView alloc] initWithFrame:CGRectMake(12, 460, width - 24, 1)];
-    self.providersCard.backgroundColor = [UIColor whiteColor];
+    self.providersCard.backgroundColor = [FETheme card];
     self.providersCard.layer.cornerRadius = 18;
     self.providersCard.layer.masksToBounds = YES;
     [self.scrollView addSubview:self.providersCard];
 
     self.statsLabel = [[UILabel alloc] initWithFrame:CGRectMake(12, 640, width - 24, 40)];
-    self.statsLabel.text = @"FuoEvolve9 · Objective-C / Theos / iOS 9";
+    self.statsLabel.text = @"D9Music · Objective-C / Theos / iOS 9";
     self.statsLabel.textColor = [FETheme textSecondary];
     self.statsLabel.font = [UIFont systemFontOfSize:10.5];
     self.statsLabel.textAlignment = NSTextAlignmentCenter;
@@ -163,18 +192,151 @@
     [self.scrollView addSubview:header];
 }
 
+#pragma mark - Account / Avatar
+
+- (id<FEProviderProtocol>)avatarProvider {
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    NSString *lastId = [FESettings sharedSettings].lastLoginProviderId;
+    id<FEProviderProtocol> last = [manager providerWithId:lastId];
+    if (last.isLoggedIn) return last;
+
+    // 没有记录时退回到第一个已登录的音源
+    for (id<FEProviderProtocol> provider in [manager orderedProviders]) {
+        if (provider.isLoggedIn) return provider;
+    }
+    return nil;
+}
+
+- (NSString *)avatarCacheKey {
+    return [NSString stringWithFormat:@"d9.account.avatar.%@", self.resolvedAvatarProviderId ?: @""];
+}
+
+- (void)refreshAvatarIfNeeded:(BOOL)force {
+    if ([FESettings sharedSettings].useCustomAvatar) {
+        UIImage *image = [[FESettings sharedSettings] customAvatarImage];
+        if (image) {
+            self.avatarView.image = image;
+            self.avatarView.hidden = NO;
+            self.avatarPlaceholder.hidden = YES;
+        }
+        self.resolvedAvatarProviderId = nil;
+        return;
+    }
+
+    id<FEProviderProtocol> provider = [self avatarProvider];
+    if (provider == nil) {
+        self.avatarView.hidden = YES;
+        self.avatarPlaceholder.hidden = NO;
+        self.resolvedAvatarProviderId = nil;
+        return;
+    }
+
+    BOOL providerChanged = ![self.resolvedAvatarProviderId isEqualToString:provider.providerId];
+    BOOL stale = self.lastProfileFetchDate == nil || [[NSDate date] timeIntervalSinceDate:self.lastProfileFetchDate] > 300;
+    if (!force && !providerChanged && !stale) return;
+
+    self.resolvedAvatarProviderId = provider.providerId;
+    self.lastProfileFetchDate = [NSDate date];
+
+    // 先用缓存显示，避免头像闪烁
+    NSString *cached = [[NSUserDefaults standardUserDefaults] stringForKey:[self avatarCacheKey]];
+    if (cached.length > 0) {
+        [self setAvatarImageWithURL:cached];
+    }
+
+    if (![provider respondsToSelector:@selector(getUserProfileWithCompletion:)]) return;
+    __weak typeof(self) weakSelf = self;
+    [provider getUserProfileWithCompletion:^(NSString *nickname, NSString *avatarURL, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            if (nickname.length > 0) {
+                strongSelf.profileNameLabel.text = nickname;
+            }
+            if (avatarURL.length > 0) {
+                [[NSUserDefaults standardUserDefaults] setObject:avatarURL forKey:[strongSelf avatarCacheKey]];
+                [[NSUserDefaults standardUserDefaults] synchronize];
+                [strongSelf setAvatarImageWithURL:avatarURL];
+            }
+        });
+    }];
+}
+
+- (void)setAvatarImageWithURL:(NSString *)urlString {
+    __weak typeof(self) weakSelf = self;
+    [FEImageLoader loadImageWithURLString:urlString completion:^(UIImage *image, NSError *error) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || image == nil) return;
+        strongSelf.avatarView.image = image;
+        strongSelf.avatarView.hidden = NO;
+        strongSelf.avatarPlaceholder.hidden = YES;
+    }];
+}
+
+- (void)avatarTapped {
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"头像"
+                                                                   message:nil
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    __weak typeof(self) weakSelf = self;
+    [sheet addAction:[UIAlertAction actionWithTitle:@"从相册选择" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        [weakSelf pickCustomAvatar];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"使用音源头像" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [[FESettings sharedSettings] clearCustomAvatar];
+        [strongSelf refreshAvatarIfNeeded:YES];
+        [FETheme showToast:@"已切换为音源头像" inView:strongSelf.view];
+    }]];
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)pickCustomAvatar {
+    if (![UIImagePickerController isSourceTypeAvailable:UIImagePickerControllerSourceTypePhotoLibrary]) {
+        [FETheme showToast:@"当前设备无法访问相册" inView:self.view];
+        return;
+    }
+    UIImagePickerController *picker = [[UIImagePickerController alloc] init];
+    picker.sourceType = UIImagePickerControllerSourceTypePhotoLibrary;
+    picker.delegate = self;
+    picker.allowsEditing = YES;
+    [self presentViewController:picker animated:YES completion:nil];
+}
+
+- (void)imagePickerController:(UIImagePickerController *)picker didFinishPickingMediaWithInfo:(NSDictionary *)info {
+    UIImage *image = info[UIImagePickerControllerEditedImage] ?: info[UIImagePickerControllerOriginalImage];
+    [picker dismissViewControllerAnimated:YES completion:^{
+        if (image == nil) return;
+        [[FESettings sharedSettings] setCustomAvatarImage:image];
+        [self refreshAvatarIfNeeded:YES];
+    }];
+}
+
+- (void)imagePickerControllerDidCancel:(UIImagePickerController *)picker {
+    [picker dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)accountDidChange:(NSNotification *)notification {
+    [self refreshAccount];
+    [self refreshAvatarIfNeeded:YES];
+}
+
+#pragma mark - Refresh
+
 - (void)refreshAccount {
-    id<FEProviderProtocol> provider = [FEProviderManager sharedManager].currentProvider;
-    self.profileStatusLabel.text = [NSString stringWithFormat:@"当前音源：%@ · %@",
-                                    provider.providerName ?: @"未选择",
-                                    provider.isLoggedIn ? @"已登录" : @"未登录"];
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    id<FEProviderProtocol> provider = manager.currentProvider;
+    NSInteger enabledCount = (NSInteger)[manager enabledProviders].count;
+    self.profileStatusLabel.text = [NSString stringWithFormat:@"当前音源：%@ · 已启用 %ld 个",
+                                    provider.providerName ?: @"未选择", (long)enabledCount];
 
     for (UIView *view in [self.providersCard.subviews copy]) {
         [view removeFromSuperview];
     }
 
     CGFloat width = self.providersCard.bounds.size.width;
-    NSArray *providers = [FEProviderManager sharedManager].providers;
+    NSArray *providers = [manager orderedProviders];
     CGFloat rowHeight = 64;
     for (NSInteger i = 0; i < (NSInteger)providers.count; i++) {
         id<FEProviderProtocol> item = providers[i];
@@ -182,13 +344,16 @@
         if ([item.providerId isEqualToString:@"bilibili"]) iconType = FEIconTypeTV;
         if ([item.providerId isEqualToString:@"qq"]) iconType = FEIconTypeHeadphones;
 
+        BOOL enabled = [manager isProviderEnabled:item];
+        BOOL isCurrent = (item == provider);
+
         UIView *badge = [[UIView alloc] initWithFrame:CGRectMake(12, i * rowHeight + 14, 36, 36)];
-        badge.backgroundColor = [[FETheme primary] colorWithAlphaComponent:0.10];
+        badge.backgroundColor = [(enabled ? [FETheme primary] : [FETheme textSecondary]) colorWithAlphaComponent:0.10];
         badge.layer.cornerRadius = 12;
         [self.providersCard addSubview:badge];
 
         FEIconView *icon = [[FEIconView alloc] initWithFrame:CGRectMake(8, 8, 20, 20) iconType:iconType];
-        icon.tintColor = [FETheme primary];
+        icon.tintColor = enabled ? [FETheme primary] : [FETheme textSecondary];
         [badge addSubview:icon];
 
         UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(60, i * rowHeight + 13, width - 120, 20)];
@@ -198,18 +363,12 @@
         [self.providersCard addSubview:name];
 
         UILabel *status = [[UILabel alloc] initWithFrame:CGRectMake(60, i * rowHeight + 33, width - 120, 16)];
-        status.text = item.isLoggedIn ? @"已登录" : @"未登录 · 点击登录";
+        status.text = [NSString stringWithFormat:@"%@%@",
+                       item.isLoggedIn ? @"已登录" : @"未登录",
+                       isCurrent ? @" · 首选" : (enabled ? @" · 使用中" : @"")];
         status.font = [UIFont systemFontOfSize:10.5];
-        status.textColor = [FETheme textSecondary];
+        status.textColor = enabled ? [FETheme accent] : [FETheme textSecondary];
         [self.providersCard addSubview:status];
-
-        BOOL isCurrent = (item == provider);
-        UILabel *current = [[UILabel alloc] initWithFrame:CGRectMake(width - 74, i * rowHeight + 22, 50, 20)];
-        current.text = isCurrent ? @"使用中" : @"切换";
-        current.textAlignment = NSTextAlignmentRight;
-        current.font = [UIFont boldSystemFontOfSize:10.5];
-        current.textColor = isCurrent ? [FETheme primary] : [FETheme textSecondary];
-        [self.providersCard addSubview:current];
 
         if (i < (NSInteger)providers.count - 1) {
             UIView *line = [[UIView alloc] initWithFrame:CGRectMake(60, (i + 1) * rowHeight - 0.5, width - 72, 0.5)];
@@ -226,8 +385,10 @@
     self.providersCard.frame = CGRectMake(12, 460, width, MAX(1, providers.count) * rowHeight);
     CGFloat bottom = 460 + MAX(1, providers.count) * rowHeight + 20;
     self.statsLabel.frame = CGRectMake(12, bottom, width, 40);
-    self.scrollView.contentSize = CGSizeMake(self.view.bounds.size.width, bottom + 70);
+    self.scrollView.contentSize = CGSizeMake(self.view.bounds.size.width, bottom + 100);
 }
+
+#pragma mark - Tiles
 
 - (void)tileTapped:(FECardButton *)tile {
     NSInteger index = tile.tag - 300;
@@ -262,7 +423,18 @@
             break;
         }
         case 3: {
-            [FETheme showToast:@"云盘功能开发中" inView:self.view];
+            if (![FEWebDAVManager sharedManager].isEnabled) {
+                UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"云盘歌曲"
+                                                                message:@"请先在设置中启用 WebDAV，云盘会读取远程路径下的歌曲目录。"
+                                                               delegate:self
+                                                      cancelButtonTitle:@"取消"
+                                                      otherButtonTitles:@"去设置", nil];
+                alert.tag = 9002;
+                [alert show];
+                return;
+            }
+            FECloudViewController *vc = [[FECloudViewController alloc] init];
+            [self.navigationController pushViewController:vc animated:YES];
             break;
         }
         case 4: {
@@ -280,17 +452,15 @@
     }
 }
 
-- (void)showLoginAlert:(NSString *)feature {
-    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:feature
-                                                   message:@"请先在音源管理中手动粘贴 Cookie 登录"
-                                                  delegate:self
-                                         cancelButtonTitle:@"取消"
-                                         otherButtonTitles:@"去登录", nil];
-    [alert show];
-}
-
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
-    if (buttonIndex == 1) [self openSourceList];
+    if (alertView.tag == 9002 && buttonIndex == 1) {
+        UIViewController *top = self;
+        while (top.presentingViewController) top = top.presentingViewController;
+        UITabBarController *tab = [top isKindOfClass:[UITabBarController class]] ? (UITabBarController *)top : nil;
+        if (tab) tab.selectedIndex = 2;
+        UINavigationController *nav = (UINavigationController *)tab.selectedViewController;
+        [nav pushViewController:[[FESettingsViewController alloc] init] animated:YES];
+    }
 }
 
 - (void)openSourceList {

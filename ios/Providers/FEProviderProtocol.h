@@ -17,8 +17,7 @@
 - (void)handleLoginCookies:(NSDictionary *)cookies;
 
 @optional
-- (void)getDailyRecommendSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
-- (void)getRadioSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
+- (void)getDailyRecommendSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;- (void)getRadioSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
 - (void)getPersonalizedPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
 - (void)getToplistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
 - (void)getNewSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
@@ -27,5 +26,8 @@
 - (void)getHighQualityPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
 - (void)likeTrack:(FETrack *)track like:(BOOL)like completion:(void (^)(BOOL success, NSError *error))completion;
 - (void)getLikedSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
+
+/// 登录用户资料（昵称 + 头像），用于“我的”页头像同步
+- (void)getUserProfileWithCompletion:(void (^)(NSString *nickname, NSString *avatarURL, NSError *error))completion;
 
 @end

@@ -11,6 +11,8 @@
 #import "FERootTabBarController.h"
 #import "FETheme.h"
 #import "FEIconView.h"
+#import "FESettings.h"
+#import "PlayerViewController.h"
 
 @implementation AppDelegate
 
@@ -27,6 +29,20 @@
     [[FEProviderManager sharedManager] registerProvider:[[FEBiliProvider alloc] init]];
     [[FEPlaylistManager sharedManager] loadPlaylists];
 
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(settingsDidChange:)
+                                                 name:FESettingsDidChangeNotification
+                                               object:nil];
+
+    [self buildRootInterface];
+
+    self.window.rootViewController = [self rootTabBarController];
+    [self.window makeKeyAndVisible];
+
+    return YES;
+}
+
+- (void)buildRootInterface {
     FERootTabBarController *tabBarController = [[FERootTabBarController alloc] init];
 
     FERecommendViewController *recommendVC = [[FERecommendViewController alloc] init];
@@ -43,11 +59,42 @@
 
     tabBarController.viewControllers = @[recommendNav, libraryNav, mineNav];
     tabBarController.selectedIndex = 0;
+    self.rootTabBarController = tabBarController;
+}
 
-    self.window.rootViewController = tabBarController;
-    [self.window makeKeyAndVisible];
+- (void)settingsDidChange:(NSNotification *)notification {
+    // 夜间模式切换：延迟重建根界面，避免在开关回调中销毁当前页面
+    [FETheme applyGlobalAppearance];
+    __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        UIViewController *old = strongSelf.window.rootViewController;
+        NSInteger selected = 0;
+        if ([old isKindOfClass:[UITabBarController class]]) {
+            selected = ((UITabBarController *)old).selectedIndex;
+        }
+        [strongSelf buildRootInterface];
+        strongSelf.window.rootViewController = strongSelf.rootTabBarController;
+        strongSelf.rootTabBarController.selectedIndex = selected;
+        [FETheme showToast:[FESettings sharedSettings].darkMode ? @"已切换到夜间模式" : @"已切换到日间模式"
+                    inView:strongSelf.rootTabBarController.view];
+    });
+}
 
-    return YES;
+- (UIInterfaceOrientationMask)application:(UIApplication *)application
+  supportedInterfaceOrientationsForWindow:(UIWindow *)window {
+    if (![FESettings sharedSettings].landscapePlayer) {
+        return UIInterfaceOrientationMaskPortrait;
+    }
+    UIViewController *presented = self.window.rootViewController.presentedViewController;
+    if ([presented isKindOfClass:[UINavigationController class]]) {
+        presented = ((UINavigationController *)presented).topViewController;
+    }
+    if ([presented isKindOfClass:[PlayerViewController class]]) {
+        return UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskLandscapeLeft | UIInterfaceOrientationMaskLandscapeRight;
+    }
+    return UIInterfaceOrientationMaskPortrait;
 }
 
 - (UINavigationController *)navigationControllerWithRoot:(UIViewController *)root {

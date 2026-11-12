@@ -18,7 +18,7 @@
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        self.backgroundColor = [UIColor whiteColor];
+        self.backgroundColor = [FETheme card];
         self.layer.shadowColor = [UIColor colorWithWhite:0.1 alpha:0.12].CGColor;
         self.layer.shadowOpacity = 1.0;
         self.layer.shadowRadius = 8;

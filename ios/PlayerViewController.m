@@ -7,9 +7,11 @@
 #import "FEProviderManager.h"
 #import "FEFavoriteManager.h"
 #import "FECurrentPlaylistViewController.h"
+#import "FESettings.h"
 
 @interface PlayerViewController ()
 
+@property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) FEGradientView *backgroundView;
 @property (nonatomic, strong) FECoverView *coverView;
 @property (nonatomic, strong) UILabel *titleLabel;
@@ -38,28 +40,29 @@
     self.backgroundView.colors = [FETheme darkGradientColors];
     [self.view addSubview:self.backgroundView];
 
-    CGFloat width = self.view.bounds.size.width;
+    self.scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    self.scrollView.alwaysBounceVertical = YES;
+    self.scrollView.showsVerticalScrollIndicator = NO;
+    self.scrollView.backgroundColor = [UIColor clearColor];
+    [self.view addSubview:self.scrollView];
 
     self.closeButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.closeButton.frame = CGRectMake(14, 26, 36, 36);
     self.closeButton.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12];
     self.closeButton.layer.cornerRadius = 18;
     [self.closeButton setImage:[FEIconView imageWithType:FEIconTypeChevronDown size:CGSizeMake(18, 18) color:[UIColor whiteColor]] forState:UIControlStateNormal];
     [self.closeButton addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.closeButton];
+    [self.scrollView addSubview:self.closeButton];
 
-    self.sourceLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 32, 110, 24)];
-    self.sourceLabel.center = CGPointMake(width / 2, 44);
+    self.sourceLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.sourceLabel.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.12];
     self.sourceLabel.layer.cornerRadius = 12;
     self.sourceLabel.layer.masksToBounds = YES;
     self.sourceLabel.textAlignment = NSTextAlignmentCenter;
     self.sourceLabel.font = [UIFont boldSystemFontOfSize:10.5];
     self.sourceLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.85];
-    [self.view addSubview:self.sourceLabel];
+    [self.scrollView addSubview:self.sourceLabel];
 
-    CGFloat coverSide = 190;
-    self.coverView = [[FECoverView alloc] initWithFrame:CGRectMake((width - coverSide) / 2, 70, coverSide, coverSide)];
+    self.coverView = [[FECoverView alloc] initWithFrame:CGRectZero];
     [self.coverView setCornerRadius:22];
     self.coverView.layer.shadowColor = [UIColor blackColor].CGColor;
     self.coverView.layer.shadowOpacity = 0.5;
@@ -68,74 +71,68 @@
     self.coverView.layer.masksToBounds = NO;
     self.coverView.imageView.layer.cornerRadius = 22;
     self.coverView.imageView.layer.masksToBounds = YES;
-    [self.view addSubview:self.coverView];
+    [self.scrollView addSubview:self.coverView];
 
-    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 276, width - 40, 26)];
+    self.titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
     self.titleLabel.font = [UIFont boldSystemFontOfSize:19];
     self.titleLabel.textColor = [UIColor whiteColor];
     self.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    [self.view addSubview:self.titleLabel];
+    [self.scrollView addSubview:self.titleLabel];
 
-    self.artistLabel = [[UILabel alloc] initWithFrame:CGRectMake(20, 302, width - 40, 18)];
+    self.artistLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.artistLabel.textAlignment = NSTextAlignmentCenter;
     self.artistLabel.font = [UIFont systemFontOfSize:12];
     self.artistLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.62];
-    [self.view addSubview:self.artistLabel];
+    [self.scrollView addSubview:self.artistLabel];
 
-    self.lyricLabel = [[UILabel alloc] initWithFrame:CGRectMake(24, 324, width - 48, 34)];
+    self.lyricLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.lyricLabel.textAlignment = NSTextAlignmentCenter;
     self.lyricLabel.font = [UIFont systemFontOfSize:12];
     self.lyricLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.85];
     self.lyricLabel.numberOfLines = 2;
     self.lyricLabel.text = @"暂无歌词";
-    [self.view addSubview:self.lyricLabel];
+    [self.scrollView addSubview:self.lyricLabel];
 
-    self.progressSlider = [[UISlider alloc] initWithFrame:CGRectMake(32, 362, width - 64, 24)];
+    self.progressSlider = [[UISlider alloc] initWithFrame:CGRectZero];
     self.progressSlider.minimumTrackTintColor = [FETheme secondary];
     self.progressSlider.maximumTrackTintColor = [[UIColor whiteColor] colorWithAlphaComponent:0.18];
     [self.progressSlider setThumbImage:[self thumbImage] forState:UIControlStateNormal];
     [self.progressSlider addTarget:self action:@selector(sliderValueChanged:) forControlEvents:UIControlEventValueChanged];
     [self.progressSlider addTarget:self action:@selector(sliderTouchEnded:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchUpOutside | UIControlEventTouchCancel];
-    [self.view addSubview:self.progressSlider];
+    [self.scrollView addSubview:self.progressSlider];
 
-    self.timeLabel = [[UILabel alloc] initWithFrame:CGRectMake(32, 386, width - 64, 14)];
+    self.timeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.timeLabel.textAlignment = NSTextAlignmentCenter;
     self.timeLabel.font = [UIFont systemFontOfSize:10];
     self.timeLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.55];
     self.timeLabel.text = @"00:00 / 00:00";
-    [self.view addSubview:self.timeLabel];
+    [self.scrollView addSubview:self.timeLabel];
 
     self.prevButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.prevButton.frame = CGRectMake(width / 2 - 108, 408, 48, 48);
     [self.prevButton setImage:[FEIconView imageWithType:FEIconTypePrev size:CGSizeMake(26, 26) color:[[UIColor whiteColor] colorWithAlphaComponent:0.9]] forState:UIControlStateNormal];
     [self.prevButton addTarget:self action:@selector(prevTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.prevButton];
+    [self.scrollView addSubview:self.prevButton];
 
     self.playButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.playButton.frame = CGRectMake(width / 2 - 32, 400, 64, 64);
     self.playButton.backgroundColor = [UIColor whiteColor];
-    self.playButton.layer.cornerRadius = 32;
     [self.playButton addTarget:self action:@selector(playTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.playButton];
+    [self.scrollView addSubview:self.playButton];
 
     self.nextButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.nextButton.frame = CGRectMake(width / 2 + 60, 408, 48, 48);
     [self.nextButton setImage:[FEIconView imageWithType:FEIconTypeNext size:CGSizeMake(26, 26) color:[[UIColor whiteColor] colorWithAlphaComponent:0.9]] forState:UIControlStateNormal];
     [self.nextButton addTarget:self action:@selector(nextTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.nextButton];
-    
+    [self.scrollView addSubview:self.nextButton];
+
     self.favoriteButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.favoriteButton.frame = CGRectMake(width / 2 - 88, 464, 40, 40);
     [self.favoriteButton setImage:[FEIconView imageWithType:FEIconTypeHeart size:CGSizeMake(22, 22) color:[[UIColor whiteColor] colorWithAlphaComponent:0.7]] forState:UIControlStateNormal];
     [self.favoriteButton addTarget:self action:@selector(favoriteTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.favoriteButton];
-    
+    [self.scrollView addSubview:self.favoriteButton];
+
     self.playlistButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.playlistButton.frame = CGRectMake(width / 2 + 48, 464, 40, 40);
     [self.playlistButton setImage:[FEIconView imageWithType:FEIconTypePlaylist size:CGSizeMake(22, 22) color:[[UIColor whiteColor] colorWithAlphaComponent:0.7]] forState:UIControlStateNormal];
     [self.playlistButton addTarget:self action:@selector(playlistTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:self.playlistButton];
+    [self.scrollView addSubview:self.playlistButton];
 
     NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
     [center addObserver:self selector:@selector(handleTrackChanged:) name:FEPlayerDidChangeTrackNotification object:nil];
@@ -145,8 +142,103 @@
     [self updateUI];
 }
 
+- (void)viewWillLayoutSubviews {
+    [super viewWillLayoutSubviews];
+    [self layoutForSize:self.view.bounds.size];
+}
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+#pragma mark - Layout
+
+- (void)layoutForSize:(CGSize)size {
+    self.backgroundView.frame = self.view.bounds;
+    self.scrollView.frame = self.view.bounds;
+
+    BOOL landscape = size.width > size.height;
+    CGFloat width = size.width;
+    CGFloat height = size.height;
+
+    self.closeButton.frame = CGRectMake(10, landscape ? 10 : 18, 36, 36);
+    self.sourceLabel.frame = CGRectMake((width - 110) / 2, landscape ? 14 : 24, 110, 24);
+
+    if (landscape) {
+        // 横屏：左侧封面 + 右侧信息与控制，适配 4S 的 480x320
+        CGFloat coverSide = MIN(height - 88, 220);
+        CGFloat coverX = 22;
+        CGFloat coverY = MAX(24, (height - coverSide) / 2 - 10);
+        self.coverView.frame = CGRectMake(coverX, coverY, coverSide, coverSide);
+
+        CGFloat rightX = coverX + coverSide + 22;
+        CGFloat rightWidth = width - rightX - 18;
+        CGFloat centerX = rightX + rightWidth / 2;
+
+        self.titleLabel.frame = CGRectMake(rightX, 40, rightWidth, 24);
+        self.artistLabel.frame = CGRectMake(rightX, 66, rightWidth, 18);
+        self.lyricLabel.frame = CGRectMake(rightX, 88, rightWidth, 32);
+
+        self.progressSlider.frame = CGRectMake(rightX, 138, rightWidth, 24);
+        self.timeLabel.frame = CGRectMake(rightX, 160, rightWidth, 14);
+
+        CGFloat controlY = MIN(190, height - 118);
+        self.playButton.frame = CGRectMake(centerX - 28, controlY, 56, 56);
+        self.playButton.layer.cornerRadius = 28;
+        self.prevButton.frame = CGRectMake(centerX - 96, controlY + 4, 48, 48);
+        self.nextButton.frame = CGRectMake(centerX + 48, controlY + 4, 48, 48);
+
+        self.favoriteButton.frame = CGRectMake(centerX - 64, controlY + 64, 40, 40);
+        self.playlistButton.frame = CGRectMake(centerX + 24, controlY + 64, 40, 40);
+
+        CGFloat contentBottom = MAX(controlY + 112, coverY + coverSide + 12);
+        self.scrollView.contentSize = CGSizeMake(width, MAX(height, contentBottom));
+    } else {
+        // 竖屏：为 4S 的 320x480 压缩封面尺寸，保证控制按钮完整可见
+        CGFloat safeHeight = height > 0 ? height : 480;
+        CGFloat coverSide = MIN(width - 120, safeHeight - 300);
+        coverSide = MAX(120, coverSide);
+        CGFloat coverY = 48;
+        self.coverView.frame = CGRectMake((width - coverSide) / 2, coverY, coverSide, coverSide);
+
+        CGFloat y = coverY + coverSide + 8;
+        self.titleLabel.frame = CGRectMake(20, y, width - 40, 24);
+        self.artistLabel.frame = CGRectMake(20, y + 26, width - 40, 18);
+        self.lyricLabel.frame = CGRectMake(20, y + 46, width - 40, 32);
+
+        self.progressSlider.frame = CGRectMake(28, y + 84, width - 56, 24);
+        self.timeLabel.frame = CGRectMake(28, y + 106, width - 56, 14);
+
+        CGFloat controlY = y + 126;
+        CGFloat centerX = width / 2;
+        self.playButton.frame = CGRectMake(centerX - 28, controlY, 56, 56);
+        self.playButton.layer.cornerRadius = 28;
+        self.prevButton.frame = CGRectMake(centerX - 96, controlY + 4, 48, 48);
+        self.nextButton.frame = CGRectMake(centerX + 48, controlY + 4, 48, 48);
+
+        self.favoriteButton.frame = CGRectMake(centerX - 64, controlY + 64, 40, 40);
+        self.playlistButton.frame = CGRectMake(centerX + 24, controlY + 64, 40, 40);
+
+        CGFloat contentBottom = controlY + 112;
+        self.scrollView.contentSize = CGSizeMake(width, MAX(height, contentBottom));
+    }
+}
+
+#pragma mark - Rotation
+
+- (BOOL)shouldAutorotate {
+    return [FESettings sharedSettings].landscapePlayer;
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+    if ([FESettings sharedSettings].landscapePlayer) {
+        return UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskLandscapeLeft | UIInterfaceOrientationMaskLandscapeRight;
+    }
+    return UIInterfaceOrientationMaskPortrait;
+}
+
+- (UIStatusBarStyle)preferredStatusBarStyle {
+    return UIStatusBarStyleLightContent;
 }
 
 - (UIImage *)thumbImage {
@@ -174,7 +266,7 @@
         }
     }
     self.sourceLabel.text = sourceName;
-    
+
     [self updateFavoriteButton];
 
     [self updatePlayIcon:manager.isPlaying];

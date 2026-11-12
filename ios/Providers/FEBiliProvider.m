@@ -8,6 +8,18 @@
 
 @implementation FEBiliProvider
 
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        NSString *cookie = [[NSUserDefaults standardUserDefaults] stringForKey:@"d9.cookie.bilibili"];
+        if (cookie.length > 0) {
+            _cookieString = [cookie copy];
+            _loggedIn = YES;
+        }
+    }
+    return self;
+}
+
 - (NSString *)providerId { return @"bilibili"; }
 - (NSString *)providerName { return @"哔哩哔哩"; }
 - (BOOL)isLoggedIn { return self.loggedIn; }
@@ -155,6 +167,31 @@
     }
     self.cookieString = cookieStr;
     self.loggedIn = cookies.count > 0;
+    if (self.loggedIn) {
+        [[NSUserDefaults standardUserDefaults] setObject:cookieStr forKey:@"d9.cookie.bilibili"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+    }
+}
+
+- (void)getUserProfileWithCompletion:(void (^)(NSString *nickname, NSString *avatarURL, NSError *error))completion {
+    if (!self.loggedIn) {
+        if (completion) completion(nil, nil, nil);
+        return;
+    }
+    NSString *url = @"https://api.bilibili.com/x/web-interface/nav";
+    [FEHttpRequest GET:url headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSString *nickname = nil;
+        NSString *avatar = nil;
+        id json = data.length > 0 ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        if ([json isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *payload = json[@"data"];
+            if ([payload isKindOfClass:[NSDictionary class]]) {
+                nickname = [payload[@"uname"] isKindOfClass:[NSString class]] ? payload[@"uname"] : nil;
+                avatar = [self fe_coverURL:payload[@"face"]];
+            }
+        }
+        if (completion) completion(nickname, avatar, error);
+    }];
 }
 
 @end

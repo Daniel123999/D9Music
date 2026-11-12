@@ -100,13 +100,13 @@ static void FEShowPlayer(UIViewController *controller) {
     self.recentHint.textColor = [FETheme textSecondary];
     self.recentHint.font = [UIFont systemFontOfSize:12];
     self.recentHint.textAlignment = NSTextAlignmentCenter;
-    self.recentHint.backgroundColor = [UIColor whiteColor];
+    self.recentHint.backgroundColor = [FETheme card];
     self.recentHint.layer.cornerRadius = 18;
     self.recentHint.layer.masksToBounds = YES;
     [self.scrollView addSubview:self.recentHint];
 
     self.recentCard = [[UIView alloc] initWithFrame:CGRectMake(12, 320, width - 24, 1)];
-    self.recentCard.backgroundColor = [UIColor whiteColor];
+    self.recentCard.backgroundColor = [FETheme card];
     self.recentCard.layer.cornerRadius = 18;
     self.recentCard.layer.masksToBounds = YES;
     self.recentCard.hidden = YES;

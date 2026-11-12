@@ -71,7 +71,7 @@
     [hero addSubview:decor];
 
     UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(18, 16, cardWidth - 120, 34)];
-    title.text = @"FuoEvolve";
+    title.text = @"D9Music";
     title.textColor = [UIColor whiteColor];
     title.font = [UIFont boldSystemFontOfSize:27];
     [hero addSubview:title];
@@ -151,7 +151,7 @@
     [self.scrollView addSubview:self.songsHint];
 
     self.songsCard = [[UIView alloc] initWithFrame:CGRectMake(12, 634, width - 24, 1)];
-    self.songsCard.backgroundColor = [UIColor whiteColor];
+    self.songsCard.backgroundColor = [FETheme card];
     self.songsCard.layer.cornerRadius = 18;
     self.songsCard.layer.masksToBounds = YES;
     self.songsCard.hidden = YES;

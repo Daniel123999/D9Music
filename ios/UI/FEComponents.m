@@ -20,7 +20,7 @@
         UIColor *tint = accent ?: [FETheme primary];
 
         [FETheme applyCardStyle:self radius:18];
-        self.backgroundColor = [UIColor whiteColor];
+        self.backgroundColor = [FETheme card];
 
         _iconBadge = [[UIView alloc] initWithFrame:CGRectZero];
         _iconBadge.backgroundColor = [tint colorWithAlphaComponent:0.12];
@@ -123,7 +123,7 @@
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
     self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
     if (self) {
-        self.backgroundColor = [UIColor whiteColor];
+        self.backgroundColor = [FETheme card];
         self.selectionStyle = UITableViewCellSelectionStyleNone;
         self.contentView.backgroundColor = [UIColor clearColor];
 

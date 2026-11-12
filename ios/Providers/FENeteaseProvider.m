@@ -20,6 +20,18 @@ static NSString *FEString(id value) {
 
 @implementation FENeteaseProvider
 
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        NSString *cookie = [[NSUserDefaults standardUserDefaults] stringForKey:@"d9.cookie.netease"];
+        if (cookie.length > 0) {
+            _cookieString = [cookie copy];
+            _loggedIn = YES;
+        }
+    }
+    return self;
+}
+
 - (NSString *)providerId { return @"netease"; }
 - (NSString *)providerName { return @"网易云音乐"; }
 - (BOOL)isLoggedIn { return self.loggedIn; }
@@ -356,6 +368,32 @@ static NSString *FEString(id value) {
     }
     self.cookieString = cookieStr;
     self.loggedIn = cookies.count > 0;
+    if (self.loggedIn) {
+        [[NSUserDefaults standardUserDefaults] setObject:cookieStr forKey:@"d9.cookie.netease"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+    }
+}
+
+- (void)getUserProfileWithCompletion:(void (^)(NSString *nickname, NSString *avatarURL, NSError *error))completion {
+    if (!self.loggedIn) {
+        if (completion) completion(nil, nil, nil);
+        return;
+    }
+    NSString *url = @"https://music.163.com/api/nuser/account/get";
+    [FEHttpRequest GET:url headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSDictionary *json = [self fe_jsonFromData:data];
+        NSDictionary *profile = FEDictObject(json, @"profile");
+        NSString *nickname = FEString(FEDictObject(profile, @"nickname"));
+        NSString *avatar = FEString(FEDictObject(profile, @"avatarUrl"));
+        if (nickname.length == 0) {
+            id account = FEDictObject(json, @"account");
+            NSString *uid = FEString(FEDictObject(account, @"id"));
+            if (uid.length > 0) {
+                nickname = FEString(FEDictObject(profile, @"nickname"));
+            }
+        }
+        if (completion) completion(nickname, avatar, error);
+    }];
 }
 
 - (void)likeTrack:(FETrack *)track like:(BOOL)like completion:(void (^)(BOOL success, NSError *error))completion {

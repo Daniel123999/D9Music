@@ -121,7 +121,7 @@
         CGRect frame = CGRectMake(12 + column * (side + 12), top + row * (itemHeight + 12), side, itemHeight);
 
         UIView *card = [[UIView alloc] initWithFrame:frame];
-        card.backgroundColor = [UIColor whiteColor];
+        card.backgroundColor = [FETheme card];
         card.layer.cornerRadius = 16;
         card.layer.masksToBounds = YES;
         [self.scrollView addSubview:card];

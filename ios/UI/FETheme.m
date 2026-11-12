@@ -1,7 +1,17 @@
 #import "FETheme.h"
+#import "FESettings.h"
 #import <QuartzCore/QuartzCore.h>
 
 @implementation FETheme
+
++ (BOOL)isDarkMode {
+    return [FESettings sharedSettings].darkMode;
+}
+
++ (void)setDarkMode:(BOOL)darkMode {
+    [FESettings sharedSettings].darkMode = darkMode;
+    [self applyGlobalAppearance];
+}
 
 + (UIColor *)colorWithHex:(NSUInteger)hex alpha:(CGFloat)alpha {
     return [UIColor colorWithRed:((hex >> 16) & 0xFF) / 255.0
@@ -10,17 +20,17 @@
                            alpha:alpha];
 }
 
-+ (UIColor *)primary { return [self colorWithHex:0x6C5CE7 alpha:1.0]; }
-+ (UIColor *)primaryDark { return [self colorWithHex:0x4B3FC4 alpha:1.0]; }
++ (UIColor *)primary { return [FETheme isDarkMode] ? [self colorWithHex:0x8B7CF6 alpha:1.0] : [self colorWithHex:0x6C5CE7 alpha:1.0]; }
++ (UIColor *)primaryDark { return [FETheme isDarkMode] ? [self colorWithHex:0x6C5CE7 alpha:1.0] : [self colorWithHex:0x4B3FC4 alpha:1.0]; }
 + (UIColor *)secondary { return [self colorWithHex:0xFF6B9D alpha:1.0]; }
 + (UIColor *)accent { return [self colorWithHex:0x14C8B8 alpha:1.0]; }
 + (UIColor *)warning { return [self colorWithHex:0xFF9F43 alpha:1.0]; }
-+ (UIColor *)background { return [self colorWithHex:0xF5F6FA alpha:1.0]; }
-+ (UIColor *)card { return [UIColor whiteColor]; }
-+ (UIColor *)textPrimary { return [self colorWithHex:0x1B1D28 alpha:1.0]; }
-+ (UIColor *)textSecondary { return [self colorWithHex:0x8A8FA3 alpha:1.0]; }
++ (UIColor *)background { return [FETheme isDarkMode] ? [self colorWithHex:0x0F1016 alpha:1.0] : [self colorWithHex:0xF5F6FA alpha:1.0]; }
++ (UIColor *)card { return [FETheme isDarkMode] ? [self colorWithHex:0x1B1D27 alpha:1.0] : [UIColor whiteColor]; }
++ (UIColor *)textPrimary { return [FETheme isDarkMode] ? [self colorWithHex:0xF2F3F8 alpha:1.0] : [self colorWithHex:0x1B1D28 alpha:1.0]; }
++ (UIColor *)textSecondary { return [FETheme isDarkMode] ? [self colorWithHex:0x9BA1B6 alpha:1.0] : [self colorWithHex:0x8A8FA3 alpha:1.0]; }
 + (UIColor *)textOnDark { return [UIColor whiteColor]; }
-+ (UIColor *)separator { return [self colorWithHex:0xE8EAF2 alpha:1.0]; }
++ (UIColor *)separator { return [FETheme isDarkMode] ? [self colorWithHex:0x2C2F3D alpha:1.0] : [self colorWithHex:0xE8EAF2 alpha:1.0]; }
 
 + (UIFont *)titleFont { return [UIFont boldSystemFontOfSize:24]; }
 + (UIFont *)sectionFont { return [UIFont boldSystemFontOfSize:17]; }
@@ -64,21 +74,25 @@
 }
 
 + (void)applyGlobalAppearance {
-    [[UINavigationBar appearance] setBarTintColor:[UIColor whiteColor]];
+    UIColor *barColor = [self card];
+    NSMutableDictionary *attributes = [NSMutableDictionary dictionary];
+    attributes[NSForegroundColorAttributeName] = [self textPrimary];
+    attributes[NSFontAttributeName] = [UIFont boldSystemFontOfSize:17];
+
+    [[UINavigationBar appearance] setBarTintColor:barColor];
     [[UINavigationBar appearance] setTintColor:[self primary]];
     [[UINavigationBar appearance] setTranslucent:NO];
-    [[UINavigationBar appearance] setTitleTextAttributes:@{
-        NSForegroundColorAttributeName: [self textPrimary],
-        NSFontAttributeName: [UIFont boldSystemFontOfSize:17]
-    }];
+    [[UINavigationBar appearance] setTitleTextAttributes:attributes];
     [[UINavigationBar appearance] setShadowImage:[[UIImage alloc] init]];
     [[UINavigationBar appearance] setBackgroundImage:[[UIImage alloc] init] forBarMetrics:UIBarMetricsDefault];
 
-    [[UITabBar appearance] setBarTintColor:[UIColor whiteColor]];
+    [[UITabBar appearance] setBarTintColor:barColor];
     [[UITabBar appearance] setTintColor:[self primary]];
     [[UITabBar appearance] setTranslucent:NO];
     [[UITabBar appearance] setShadowImage:[[UIImage alloc] init]];
     [[UITabBar appearance] setBackgroundImage:[[UIImage alloc] init]];
+
+    [[UITableView appearance] setBackgroundColor:[self background]];
 }
 
 + (void)styleTableView:(UITableView *)tableView {

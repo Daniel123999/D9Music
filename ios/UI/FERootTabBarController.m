@@ -80,10 +80,8 @@
         return;
     }
     PlayerViewController *player = [[PlayerViewController alloc] init];
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:player];
-    nav.navigationBarHidden = YES;
-    nav.modalPresentationStyle = UIModalPresentationFullScreen;
-    [self presentViewController:nav animated:YES completion:nil];
+    player.modalPresentationStyle = UIModalPresentationFullScreen;
+    [self presentViewController:player animated:YES completion:nil];
 }
 
 @end

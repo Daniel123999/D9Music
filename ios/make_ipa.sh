@@ -2,7 +2,7 @@
 # Package a Theos .app as an unsigned IPA.
 set -euo pipefail
 
-APP_NAME="${APP_NAME:-FuoEvolve9}"
+APP_NAME="${APP_NAME:-D9Music}"
 OUTPUT_IPA_NAME="${OUTPUT_IPA_NAME:-${APP_NAME}.ipa}"
 APP_DIR="${APP_NAME}.app"
 

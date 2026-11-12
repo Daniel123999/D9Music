@@ -3,9 +3,11 @@
 #import "FEIconView.h"
 #import "FEProviderManager.h"
 #import "FELoginWebViewController.h"
+#import "FESettings.h"
 
 @interface FESourceCell : UITableViewCell
 @property (nonatomic, strong) UIView *badge;
+@property (nonatomic, strong) UILabel *priorityLabel;
 @property (nonatomic, strong) FEIconView *iconView;
 @property (nonatomic, strong) UILabel *nameLabel;
 @property (nonatomic, strong) UILabel *statusLabel;
@@ -18,28 +20,37 @@
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
     self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
     if (self) {
-        self.backgroundColor = [UIColor whiteColor];
+        self.backgroundColor = [FETheme card];
         self.selectionStyle = UITableViewCellSelectionStyleNone;
 
-        self.badge = [[UIView alloc] initWithFrame:CGRectMake(16, 14, 40, 40)];
+        self.badge = [[UIView alloc] initWithFrame:CGRectMake(12, 14, 40, 40)];
         self.badge.layer.cornerRadius = 13;
         [self.contentView addSubview:self.badge];
 
         self.iconView = [[FEIconView alloc] initWithFrame:CGRectMake(9, 9, 22, 22)];
         [self.badge addSubview:self.iconView];
 
-        self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(68, 14, 140, 20)];
+        self.priorityLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, 16, 16)];
+        self.priorityLabel.textAlignment = NSTextAlignmentCenter;
+        self.priorityLabel.font = [UIFont boldSystemFontOfSize:9];
+        self.priorityLabel.textColor = [UIColor whiteColor];
+        self.priorityLabel.backgroundColor = [FETheme primary];
+        self.priorityLabel.layer.cornerRadius = 8;
+        self.priorityLabel.layer.masksToBounds = YES;
+        [self.contentView addSubview:self.priorityLabel];
+
+        self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(64, 14, 140, 20)];
         self.nameLabel.font = [UIFont boldSystemFontOfSize:14];
         self.nameLabel.textColor = [FETheme textPrimary];
         [self.contentView addSubview:self.nameLabel];
 
-        self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(68, 34, 160, 16)];
+        self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(64, 34, 160, 16)];
         self.statusLabel.font = [UIFont systemFontOfSize:10.5];
         self.statusLabel.textColor = [FETheme textSecondary];
         [self.contentView addSubview:self.statusLabel];
 
         self.actionButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        self.actionButton.frame = CGRectMake(self.bounds.size.width - 78, 18, 62, 28);
+        self.actionButton.frame = CGRectMake(self.bounds.size.width - 86, 18, 74, 28);
         self.actionButton.layer.cornerRadius = 14;
         self.actionButton.titleLabel.font = [UIFont boldSystemFontOfSize:10.5];
         [self.actionButton addTarget:self action:@selector(actionTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -51,9 +62,10 @@
 - (void)layoutSubviews {
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width;
-    self.actionButton.frame = CGRectMake(width - 78, 18, 62, 28);
-    self.nameLabel.frame = CGRectMake(68, 14, width - 68 - 92, 20);
-    self.statusLabel.frame = CGRectMake(68, 34, width - 68 - 92, 16);
+    self.actionButton.frame = CGRectMake(width - 86, 18, 74, 28);
+    self.nameLabel.frame = CGRectMake(64, 14, width - 64 - 96, 20);
+    self.statusLabel.frame = CGRectMake(64, 34, width - 64 - 96, 16);
+    self.priorityLabel.frame = CGRectMake(8, 8, 16, 16);
 }
 
 - (void)actionTapped {
@@ -67,6 +79,7 @@
 @property (nonatomic, strong) UIView *headerView;
 @property (nonatomic, strong) UILabel *headerTitle;
 @property (nonatomic, strong) UILabel *headerSubtitle;
+@property (nonatomic, strong) UIBarButtonItem *editItem;
 @end
 
 @implementation FESourceListViewController
@@ -77,6 +90,11 @@
     self.view.backgroundColor = [FETheme background];
     self.automaticallyAdjustsScrollViewInsets = NO;
 
+    self.editItem = [[UIBarButtonItem alloc] initWithTitle:@"排序"
+                                                     style:UIBarButtonItemStylePlain
+                                                    target:self
+                                                    action:@selector(toggleEditing)];
+    self.navigationItem.leftBarButtonItem = self.editItem;
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"完成"
                                                                               style:UIBarButtonItemStyleDone
                                                                              target:self
@@ -89,7 +107,7 @@
     self.tableView.backgroundColor = [FETheme background];
     self.tableView.separatorColor = [FETheme separator];
     self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
-    self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 80, 0);
+    self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 100, 0);
     [self.view addSubview:self.tableView];
 
     [self buildHeader];
@@ -114,7 +132,7 @@
     [self.headerView addSubview:card];
 
     UILabel *caption = [[UILabel alloc] initWithFrame:CGRectMake(18, 14, 200, 16)];
-    caption.text = @"当前音源";
+    caption.text = @"当前首选音源";
     caption.font = [UIFont systemFontOfSize:11];
     caption.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.72];
     [card addSubview:caption];
@@ -137,26 +155,43 @@
 }
 
 - (void)refreshHeader {
-    id<FEProviderProtocol> provider = [FEProviderManager sharedManager].currentProvider;
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    id<FEProviderProtocol> provider = manager.currentProvider;
     self.headerTitle.text = provider.providerName ?: @"未选择";
-    self.headerSubtitle.text = provider.isLoggedIn ? @"已登录，可以访问歌单与推荐" : @"未登录，搜索与部分歌曲仍可用";
+    NSInteger enabled = (NSInteger)[manager enabledProviders].count;
+    self.headerSubtitle.text = [NSString stringWithFormat:@"已启用 %ld 个音源 · 按下方顺序依次尝试", (long)enabled];
 }
 
 - (void)doneTapped {
     [self.navigationController popViewControllerAnimated:YES];
 }
 
+- (void)toggleEditing {
+    [self.tableView setEditing:!self.tableView.editing animated:YES];
+    self.editItem.title = self.tableView.editing ? @"完成排序" : @"排序";
+}
+
+#pragma mark - Table
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
     return 2;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    return section == 0 ? @"选择音源" : @"说明";
+    if (section == 0) return @"音源列表（拖动排序即优先级）";
+    return @"说明";
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (section == 0) return [FEProviderManager sharedManager].providers.count;
     return 1;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
+    if (section == 0) {
+        return @"开启「使用」后该音源参与播放与搜索的自动切换；同时可开启多个音源。";
+    }
+    return nil;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -165,11 +200,11 @@
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:InfoId];
         if (cell == nil) {
             cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:InfoId];
-            cell.backgroundColor = [UIColor whiteColor];
+            cell.backgroundColor = [FETheme card];
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
         }
-        cell.textLabel.text = @"登录方式：在设置中手动粘贴 Cookie";
-        cell.textLabel.font = [UIFont systemFontOfSize:12];
+        cell.textLabel.text = @"登录方式：手动粘贴 Cookie（不内置网页登录）。点按音源可登录或设为首选。";
+        cell.textLabel.font = [UIFont systemFontOfSize:11.5];
         cell.textLabel.textColor = [FETheme textSecondary];
         cell.textLabel.numberOfLines = 2;
         return cell;
@@ -181,68 +216,91 @@
         cell = [[FESourceCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellId];
     }
 
-    id<FEProviderProtocol> provider = [FEProviderManager sharedManager].providers[indexPath.row];
-    BOOL isCurrent = (provider == [FEProviderManager sharedManager].currentProvider);
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    id<FEProviderProtocol> provider = [manager orderedProviders][indexPath.row];
+    BOOL isCurrent = (provider == manager.currentProvider);
+    BOOL enabled = [manager isProviderEnabled:provider];
+    NSInteger priority = [manager priorityIndexForProvider:provider];
 
     FEIconType iconType = FEIconTypeNote;
     if ([provider.providerId isEqualToString:@"bilibili"]) iconType = FEIconTypeTV;
     if ([provider.providerId isEqualToString:@"qq"]) iconType = FEIconTypeHeadphones;
 
     cell.iconView.iconType = iconType;
-    cell.iconView.tintColor = isCurrent ? [FETheme primary] : [FETheme textSecondary];
-    cell.badge.backgroundColor = [(isCurrent ? [FETheme primary] : [FETheme textSecondary]) colorWithAlphaComponent:0.10];
+    cell.iconView.tintColor = enabled ? [FETheme primary] : [FETheme textSecondary];
+    cell.badge.backgroundColor = [(enabled ? [FETheme primary] : [FETheme textSecondary]) colorWithAlphaComponent:0.10];
     cell.nameLabel.text = provider.providerName;
-    cell.statusLabel.text = provider.isLoggedIn ? @"已登录" : @"未登录 · 手动 Cookie";
+    cell.statusLabel.text = [NSString stringWithFormat:@"%@%@",
+                             provider.isLoggedIn ? @"已登录" : @"未登录",
+                             isCurrent ? @" · 首选" : @""];
     cell.statusLabel.textColor = provider.isLoggedIn ? [FETheme accent] : [FETheme textSecondary];
+    cell.priorityLabel.text = [NSString stringWithFormat:@"%ld", (long)(priority + 1)];
+    cell.priorityLabel.hidden = !enabled;
 
-    if (isCurrent) {
-        cell.actionButton.backgroundColor = [[FETheme primary] colorWithAlphaComponent:0.12];
+    if (enabled) {
+        cell.actionButton.backgroundColor = [[FETheme primary] colorWithAlphaComponent:0.14];
         [cell.actionButton setTitle:@"使用中" forState:UIControlStateNormal];
         [cell.actionButton setTitleColor:[FETheme primary] forState:UIControlStateNormal];
-        cell.onAction = ^{
-            [self openLoginIfNeeded:provider];
-        };
     } else {
         cell.actionButton.backgroundColor = [FETheme primary];
-        [cell.actionButton setTitle:provider.isLoggedIn ? @"切换" : @"登录" forState:UIControlStateNormal];
+        [cell.actionButton setTitle:@"使用" forState:UIControlStateNormal];
         [cell.actionButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        __weak typeof(self) weakSelf = self;
-        __weak typeof(provider) weakProvider = provider;
-        cell.onAction = ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            if (weakProvider.isLoggedIn) {
-                [strongSelf switchToProvider:weakProvider];
-            } else {
-                [strongSelf openLoginForProvider:weakProvider];
-            }
-        };
     }
 
+    __weak typeof(self) weakSelf = self;
+    __weak typeof(provider) weakProvider = provider;
+    cell.onAction = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        [strongSelf toggleProvider:weakProvider];
+    };
+
     return cell;
+}
+
+- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
+    return indexPath.section == 0;
+}
+
+- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath toIndexPath:(NSIndexPath *)destinationIndexPath {
+    [[FEProviderManager sharedManager] moveProviderAtIndex:sourceIndexPath.row toIndex:destinationIndexPath.row];
+    [self refreshHeader];
+    // 等移动动画结束后再刷新序号，避免打断 UITableView 的编辑动画
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self.tableView reloadData];
+    });
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.section != 0) return;
+    if (tableView.editing) return;
 
-    id<FEProviderProtocol> provider = [FEProviderManager sharedManager].providers[indexPath.row];
-    if (provider == [FEProviderManager sharedManager].currentProvider) {
-        [self openLoginIfNeeded:provider];
-        return;
-    }
-    if (provider.isLoggedIn) {
-        [self switchToProvider:provider];
-    } else {
-        [self openLoginForProvider:provider];
-    }
-}
-
-- (void)openLoginIfNeeded:(id<FEProviderProtocol>)provider {
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    id<FEProviderProtocol> provider = [manager orderedProviders][indexPath.row];
     if (!provider.isLoggedIn) {
         [self openLoginForProvider:provider];
+        return;
+    }
+    [manager switchToProviderWithId:provider.providerId];
+    [self.tableView reloadData];
+    [self refreshHeader];
+    [FETheme showToast:[NSString stringWithFormat:@"%@ 已设为首选", provider.providerName] inView:self.view];
+}
+
+- (void)toggleProvider:(id<FEProviderProtocol>)provider {
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    BOOL enabled = [manager isProviderEnabled:provider];
+    [manager setProvider:provider enabled:!enabled];
+    [self.tableView reloadData];
+    [self refreshHeader];
+
+    if (!enabled && !provider.isLoggedIn) {
+        [FETheme showToast:@"已启用，登录后可访问歌单与推荐" inView:self.view];
     } else {
-        [FETheme showToast:@"已经是当前音源" inView:self.view];
+        [FETheme showToast:enabled ? [NSString stringWithFormat:@"%@ 已停用", provider.providerName]
+                                  : [NSString stringWithFormat:@"%@ 使用中", provider.providerName]
+                      inView:self.view];
     }
 }
 
@@ -250,13 +308,6 @@
     FELoginViewController *loginVC = [[FELoginViewController alloc] init];
     loginVC.provider = provider;
     [self.navigationController pushViewController:loginVC animated:YES];
-}
-
-- (void)switchToProvider:(id<FEProviderProtocol>)provider {
-    [[FEProviderManager sharedManager] switchToProviderWithId:provider.providerId];
-    [self.tableView reloadData];
-    [self refreshHeader];
-    [FETheme showToast:[NSString stringWithFormat:@"已切换到 %@", provider.providerName] inView:self.view];
 }
 
 @end

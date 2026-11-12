@@ -9,6 +9,7 @@
 @interface FEPlaylistListViewController ()
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSArray<FEPlaylist *> *sourcePlaylists;
+@property (nonatomic, strong) UIBarButtonItem *editItem;
 @end
 
 @implementation FEPlaylistListViewController
@@ -32,10 +33,15 @@
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
                                                                                            target:self
                                                                                            action:@selector(addPlaylist)];
-    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"编辑"
-                                                                            style:UIBarButtonItemStylePlain
-                                                                           target:self
-                                                                           action:@selector(toggleEdit)];
+    self.editItem = [[UIBarButtonItem alloc] initWithTitle:@"编辑"
+                                                     style:UIBarButtonItemStylePlain
+                                                    target:self
+                                                    action:@selector(toggleEdit)];
+    self.navigationItem.rightBarButtonItems = @[self.navigationItem.rightBarButtonItem, self.editItem];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"‹ 返回"
+                                                                             style:UIBarButtonItemStylePlain
+                                                                            target:self
+                                                                            action:@selector(backTapped)];
 
     [self loadSourcePlaylists];
 }
@@ -64,7 +70,11 @@
 
 - (void)toggleEdit {
     [self.tableView setEditing:!self.tableView.editing animated:YES];
-    self.navigationItem.leftBarButtonItem.title = self.tableView.editing ? @"完成" : @"编辑";
+    self.editItem.title = self.tableView.editing ? @"完成" : @"编辑";
+}
+
+- (void)backTapped {
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)addPlaylist {
@@ -106,7 +116,7 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:CellId];
     if (cell == nil) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:CellId];
-        cell.backgroundColor = [UIColor whiteColor];
+        cell.backgroundColor = [FETheme card];
         cell.textLabel.font = [UIFont systemFontOfSize:14];
         cell.textLabel.textColor = [FETheme textPrimary];
         cell.detailTextLabel.font = [UIFont systemFontOfSize:10.5];

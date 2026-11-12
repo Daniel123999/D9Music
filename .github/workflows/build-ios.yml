@@ -7,9 +7,9 @@ on:
 
 env:
   THEOS: ${{ github.workspace }}/theos
-  APP_NAME: FuoEvolve9
-  ARTIFACT_NAME: FuoEvolve9-ipa
-  IPA_ASSET_NAME: FuoEvolve9.ipa
+  APP_NAME: D9Music
+  ARTIFACT_NAME: D9Music-ipa
+  IPA_ASSET_NAME: D9Music.ipa
 
 jobs:
   build:
