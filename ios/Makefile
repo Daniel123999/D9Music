@@ -10,7 +10,7 @@ D9Music_FILES = $(wildcard *.m) $(wildcard Models/*.m) $(wildcard Providers/*.m)
 D9Music_FRAMEWORKS = UIKit Foundation CoreFoundation AVFoundation QuartzCore MediaPlayer CoreMedia AudioToolbox
 D9Music_USE_MODULES = 0
 USE_MODULES = 0
-D9Music_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-error=deprecated-module-dot-map -I. -IModels -IProviders -IPlayer -ILyrics -IPlaylist -ILogin -ILocalMusic -IUtils -IUI
+D9Music_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -I. -IModels -IProviders -IPlayer -ILyrics -IPlaylist -ILogin -ILocalMusic -IUtils -IUI
 D9Music_INFOPLIST = $(THEOS_PROJECT_DIR)/Info.plist
 D9Music_RESOURCE_DIRS = icons
 D9Music_LDFLAGS = -Wl,-undefined,dynamic_lookup
