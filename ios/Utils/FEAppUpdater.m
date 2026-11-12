@@ -254,7 +254,7 @@ static NSInteger FECompareVersion(NSString *a, NSString *b) {
 
     // 优先走 Release API（JSON，稳定），失败再回退解析 release 页面 HTML
     NSString *apiURL = [host isEqualToString:@"https://gitee.com"]
-        ? [NSString stringWithFormat:@"https://gitee.com/api/v5/repos/%@/releases?page=1&per_page=1", repo]
+        ? [NSString stringWithFormat:@"https://gitee.com/api/v5/repos/%@/releases?page=1&per_page=20", repo]
         : [NSString stringWithFormat:@"https://api.github.com/repos/%@/releases/latest", repo];
     NSMutableURLRequest *apiRequest = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:apiURL]];
     apiRequest.timeoutInterval = 20;
