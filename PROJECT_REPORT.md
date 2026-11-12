@@ -34,10 +34,15 @@ ARCHS：armv7
 | 本地音乐扫描（MPMediaLibrary） | 已完成（代码） |
 | 本地歌单 CRUD 与持久化 | 已完成（代码） |
 | 播放界面（封面/进度/歌词同步） | 已完成（代码） |
+| 收藏（登录网易云走 `like`，未登录存本地“我喜欢”歌单） | 已完成（代码） |
+| WebDAV 同步（歌单/配置备份恢复，设置页含连接测试） | 已完成（代码） |
+| 当前播放列表页（查看/删除/清空队列）、歌单重命名/删除 | 已完成（代码） |
+| 应用图标（紫粉渐变 + 白色音符，11 个尺寸已进包） | 已完成（包内验证） |
 
-未做：QQ 音乐完整 API、YouTube Music、下载、听歌识曲、视频播放、收藏/云盘完整逻辑。
+未做：QQ 音乐完整 API、YouTube Music、下载、听歌识曲、视频播放、云盘完整逻辑。
 
-> 注意：上表“已完成”指源码已写入并通过静态检查/接口验证，**1.2.0 这批改动尚未经过一次真实编译**（见第 6 节）。
+> 注意：上表“已完成”指源码已写入、通过静态检查/接口验证，并已由 GitHub Actions（macos-15 + Theos）成功交叉编译为 armv7 IPA；
+> **尚未在 iPhone 4S 真机上安装运行**（见第 6 节）。
 
 ## 4. 本轮（1.2.0 / build 4）改动要点
 
@@ -87,9 +92,23 @@ B 站   x/web-interface/search/type             code=0 results=3
 
 ## 5. 构建与验证证据
 
-### 5.1 包级验证（`inspect_ipa.py --expect-arch armv7`）
+### 5.1 包级验证
 
-仅对 **1.0.0 build 2** 有效：
+**当前版本 1.2.0 build 4**（GitHub Actions run `43136575280`，commit `539ceef`）：
+
+```text
+IPA: artifacts/verified-ipas/FuoEvolve9-v1.2.0-build4-armv7.ipa
+size=166815 sha256=2F514E2C1B7650594FF92CD858AC6491D9884713D668093AA0C2A5006D5E4E5A
+bundle=com.feeluown.fuoevolve9 version=1.2.0 build=4 minOS=9.0
+architectures=armv7 (cpu=12, subtype=9)
+Mach-O magic=0xfeedface
+NSAppTransportSecurity.NSAllowsArbitraryLoads=true
+bundle 内含图标 PNG=11（Icon / Icon@2x / Icon-60 / Icon-60@2x / Icon-60@3x /
+  Icon-Small / Icon-Small@2x / Icon-Small@3x / Icon-Small-40 / Icon-Small-40@2x / Icon-Small-40@3x）
+RESULT: OK
+```
+
+历史版本 1.0.0 build 2（仅作对照）：
 
 ```text
 IPA: artifacts/verified-ipas/FuoEvolve9-v1.0.0-build2-armv7.ipa
@@ -110,21 +129,39 @@ RESULT: OK
   - GitHub: https://github.com/Daniel123999/FuoEvolve9/releases/download/v1.0.0/FuoEvolve9.ipa
   - Gitee: https://gitee.com/jyz2574461147/FuoEvolve9/releases/download/v1.0.0/FuoEvolve9.ipa
 
-### 5.3 当前构建阻塞
+### 5.3 构建通道（2026-11-12 打通）
 
-- GitHub Actions：API 返回 `403 已禁止`（含 `/rate_limit`），token/账号被限制，无法触发工作流。
-- Gitee：无 CI。
-- 本机 Windows：无 macOS / Theos / ldid，**无法产出 IPA**。
+| 项 | 内容 |
+|---|---|
+| 代码托管 | GitHub `Daniel123999/FuoEvolve9`（主）+ Gitee `jyz2574461147/FuoEvolve9`（镜像） |
+| CI | GitHub Actions，`runs-on: macos-15`，Theos + `iPhoneOS9.3.sdk`，`TARGET=iphone:clang:9.3:9.0` |
+| 本次成功 | run `43136575280`，commit `539ceef`，产物 `FuoEvolve9-ipa` 162645 B（解包后 IPA 166815 B） |
+| 产物归档 | `artifacts/verified-ipas/FuoEvolve9-v1.2.0-build4-armv7.ipa`、`local-ipas/FuoEvolve9-latest-armv7.ipa` |
+
+构建过程中真实遇到并修复的两个问题：
+
+1. **编译错误（run `43136319416` 前的 `43135842283`）**：
+   `FEPlaylistListViewController.m` 在合并 `alertView:clickedButtonAtIndex:` 时丢失了
+   `UITableViewDataSource` 必需方法，`-Werror,-Wprotocol` 直接报错。
+   已补回 data source/delegate 与左滑「重命名/删除」动作，本地以 `-Werror` 全量复检 35 个 `.m` 通过。
+2. **包内缺图标（run `43136319416` 产物）**：`ios/Makefile` 未把 `ios/icons/*.png` 拷进 bundle，
+   `CFBundleIcons` 引用的 11 个 PNG 全部缺失。已加 `FuoEvolve9_RESOURCE_DIRS = icons` 修复。
+
+> 注：另一账号 `giabana-cd40b232` 的 hosted runner 始终无法分配（
+> “The job was not acquired by Runner of type hosted”），该仓库已停用，构建统一走 `Daniel123999` 账号。
+
 
 ## 6. 未验证事项（必须明确）
 
-1. **1.2.0 这批改动（ios/UI 全部代码 + 播放器/Provider 重写）尚未经过一次真实编译**，可能存在编译错误。
-2. **未在 iPhone 4S 真机安装/启动** —— 真机启动、渲染、播放、稳定性均未验证。
-3. Gitee 公开下载未从本机成功获取（403）。
+1. **1.2.0 build 4 已成功编译**（armv7、包含图标），但**从未在 iPhone 4S 真机上安装/启动** ——
+   启动崩溃、UI 布局、AVPlayer 实际播放、Cookie 登录、WebDAV 同步均未经过运行时验证。
+2. 构建机为 GitHub Actions 的 macOS runner（clang + Theos），与本机 `-Werror` 静态检查一致，但静态检查不能替代真机运行。
+3. Gitee 公开下载未从本机成功获取（403），仅 GitHub 侧下载校验通过。
 4. VIP/版权歌曲仍无法播放（服务端 `url:null`），仅能自动切换音源兜底。
 
 ## 7. 下一步最小动作
 
-1. 恢复可用的构建通道（GitHub Actions 或任意 macOS + Theos），编译 1.2.0 → `inspect_ipa.py --expect-arch armv7` → 归档到 `artifacts/verified-ipas`。
-2. 在 4S 上安装，实测：搜索 → 点击播放、推荐页各模块、播放失败自动换源、Cookie 登录。
-3. 补齐 QQ 音乐 API；再考虑收藏、云盘、下载与本地文件导入。
+1. 把 `local-ipas/FuoEvolve9-latest-armv7.ipa` 装到已越狱 + AppSync Unified 的 4S 上，
+   实测：启动 → 搜索 → 点击播放、推荐页各模块、播放失败自动换源、Cookie 登录、收藏、WebDAV。
+2. 依据真机崩溃日志/表现修 bug，再走一次 CI 出包。
+3. 补齐 QQ 音乐 API；再考虑云盘、下载与本地文件导入。
