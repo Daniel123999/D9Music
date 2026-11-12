@@ -116,7 +116,9 @@ jobs:
         working-directory: ios
         run: |
           make clean || true
-          make TARGET=iphone:clang:9.3:9.0 ARCHS=armv7
+          # FINALPACKAGE=1 使用发布优化配置（-O2、去调试符号）
+          make TARGET=iphone:clang:9.3:9.0 ARCHS=armv7 FINALPACKAGE=1
+          make package TARGET=iphone:clang:9.3:9.0 ARCHS=armv7 FINALPACKAGE=1 || true
           find .theos -maxdepth 5 -name "*.app" -type d || true
 
       - name: Package unsigned IPA
