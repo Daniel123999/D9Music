@@ -10,8 +10,10 @@
 @property (nonatomic, copy) NSString *playUrl;
 @property (nonatomic, copy) NSString *lyricUrl;
 @property (nonatomic, copy) NSString *providerId; // netease/qq/bilibili/local
+@property (nonatomic, strong) NSDictionary *httpHeaders; // 播放时附加的请求头（如 B 站 Referer）
 @property (nonatomic, assign) NSTimeInterval duration;
 @property (nonatomic, assign) BOOL isLocal;
+@property (nonatomic, assign) BOOL isFavorite;
 
 + (instancetype)trackWithTitle:(NSString *)title artist:(NSString *)artist;
 

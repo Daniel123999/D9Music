@@ -1,4 +1,4 @@
 #import <UIKit/UIKit.h>
 
-@interface FERecommendViewController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@interface FERecommendViewController : UIViewController
 @end

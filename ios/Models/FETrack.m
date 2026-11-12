@@ -22,8 +22,10 @@
         self.playUrl = [aDecoder decodeObjectForKey:@"playUrl"];
         self.lyricUrl = [aDecoder decodeObjectForKey:@"lyricUrl"];
         self.providerId = [aDecoder decodeObjectForKey:@"providerId"];
+        self.httpHeaders = [aDecoder decodeObjectForKey:@"httpHeaders"];
         self.duration = [aDecoder decodeDoubleForKey:@"duration"];
         self.isLocal = [aDecoder decodeBoolForKey:@"isLocal"];
+        self.isFavorite = [aDecoder decodeBoolForKey:@"isFavorite"];
     }
     return self;
 }
@@ -37,8 +39,10 @@
     [aCoder encodeObject:self.playUrl forKey:@"playUrl"];
     [aCoder encodeObject:self.lyricUrl forKey:@"lyricUrl"];
     [aCoder encodeObject:self.providerId forKey:@"providerId"];
+    [aCoder encodeObject:self.httpHeaders forKey:@"httpHeaders"];
     [aCoder encodeDouble:self.duration forKey:@"duration"];
     [aCoder encodeBool:self.isLocal forKey:@"isLocal"];
+    [aCoder encodeBool:self.isFavorite forKey:@"isFavorite"];
 }
 
 @end

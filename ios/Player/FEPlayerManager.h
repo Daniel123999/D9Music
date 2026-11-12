@@ -2,6 +2,11 @@
 #import <AVFoundation/AVFoundation.h>
 #import "FETrack.h"
 
+extern NSString *const FEPlayerDidChangeTrackNotification;
+extern NSString *const FEPlayerDidChangeStateNotification;
+extern NSString *const FEPlayerDidUpdateTimeNotification;
+extern NSString *const FEPlayerDidFailNotification; // userInfo[@"message"]
+
 @protocol FEPlayerDelegate <NSObject>
 @optional
 - (void)playerDidChangeTrack:(FETrack *)track;
@@ -22,7 +27,12 @@
 @property (nonatomic, weak) id<FEPlayerDelegate> delegate;
 @property (nonatomic, assign) BOOL autoSwitchSourceOnFailure;
 
+@property (nonatomic, readonly) NSTimeInterval currentTime;
+@property (nonatomic, readonly) NSTimeInterval duration;
+@property (nonatomic, strong, readonly) NSArray<FETrack *> *history;
+
 - (void)playTrack:(FETrack *)track;
+- (void)playTracks:(NSArray<FETrack *> *)tracks startIndex:(NSInteger)index;
 - (void)play;
 - (void)pause;
 - (void)toggle;
@@ -30,5 +40,6 @@
 - (void)previous;
 - (void)addToPlaylist:(FETrack *)track;
 - (void)trySwitchSourceForTrack:(FETrack *)track;
+- (void)seekToProgress:(double)progress;
 
 @end

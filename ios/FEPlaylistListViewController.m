@@ -1,9 +1,14 @@
 #import "FEPlaylistListViewController.h"
+#import "FETheme.h"
+#import "FEIconView.h"
 #import "FEPlaylistManager.h"
 #import "FEProviderManager.h"
+#import "FENeteaseProvider.h"
+#import "FETrackListViewController.h"
 
 @interface FEPlaylistListViewController ()
 @property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSArray<FEPlaylist *> *sourcePlaylists;
 @end
 
 @implementation FEPlaylistListViewController
@@ -11,78 +16,103 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = @"歌单管理";
-    self.view.backgroundColor = [UIColor whiteColor];
-    
+    self.view.backgroundColor = [FETheme background];
+    self.automaticallyAdjustsScrollViewInsets = NO;
+
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStyleGrouped];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
+    self.tableView.rowHeight = 60;
+    self.tableView.backgroundColor = [FETheme background];
+    self.tableView.separatorColor = [FETheme separator];
+    self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
+    self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 80, 0);
     [self.view addSubview:self.tableView];
-    
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(addPlaylist)];
-    
-    // 尝试读取当前音源歌单
+
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd
+                                                                                           target:self
+                                                                                           action:@selector(addPlaylist)];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"编辑"
+                                                                            style:UIBarButtonItemStylePlain
+                                                                           target:self
+                                                                           action:@selector(toggleEdit)];
+
+    [self loadSourcePlaylists];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.tableView reloadData];
+}
+
+- (void)loadSourcePlaylists {
     id<FEProviderProtocol> provider = [FEProviderManager sharedManager].currentProvider;
-    if (provider && provider.isLoggedIn) {
-        [provider getUserPlaylistsWithCompletion:^(NSArray *playlists, NSError *error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self.tableView reloadData];
-            });
-        }];
+    if (provider == nil || !provider.isLoggedIn) {
+        self.sourcePlaylists = @[];
+        return;
     }
+    __weak typeof(self) weakSelf = self;
+    [provider getUserPlaylistsWithCompletion:^(NSArray<FEPlaylist *> *playlists, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            strongSelf.sourcePlaylists = playlists ?: @[];
+            [strongSelf.tableView reloadData];
+        });
+    }];
+}
+
+- (void)toggleEdit {
+    [self.tableView setEditing:!self.tableView.editing animated:YES];
+    self.navigationItem.leftBarButtonItem.title = self.tableView.editing ? @"完成" : @"编辑";
 }
 
 - (void)addPlaylist {
-    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"新建歌单" message:nil delegate:self cancelButtonTitle:@"取消" otherButtonTitles:@"创建", nil];
+    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"新建歌单"
+                                                   message:@"给歌单取一个名字"
+                                                  delegate:self
+                                         cancelButtonTitle:@"取消"
+                                         otherButtonTitles:@"创建", nil];
     alert.alertViewStyle = UIAlertViewStylePlainTextInput;
     [alert show];
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
+    if (alertView.tag >= 1000 && alertView.tag < 2000) {
+        if (buttonIndex == 1) {
+            NSInteger index = alertView.tag - 1000;
+            if (index >= 0 && index < (NSInteger)[FEPlaylistManager sharedManager].localPlaylists.count) {
+                FEPlaylist *playlist = [FEPlaylistManager sharedManager].localPlaylists[index];
+                [[FEPlaylistManager sharedManager] deletePlaylist:playlist];
+                [self.tableView reloadData];
+                [FETheme showToast:@"歌单已删除" inView:self.view];
+            }
+        }
+        return;
+    }
+    if (alertView.tag >= 2000) {
+        if (buttonIndex == 1) {
+            NSInteger index = alertView.tag - 2000;
+            UITextField *tf = [alertView textFieldAtIndex:0];
+            NSString *name = [tf.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (name.length > 0 && index >= 0 && index < (NSInteger)[FEPlaylistManager sharedManager].localPlaylists.count) {
+                FEPlaylist *playlist = [FEPlaylistManager sharedManager].localPlaylists[index];
+                playlist.name = name;
+                [[FEPlaylistManager sharedManager] savePlaylists];
+                [self.tableView reloadData];
+                [FETheme showToast:@"重命名成功" inView:self.view];
+            }
+        }
+        return;
+    }
     if (buttonIndex == 1) {
         UITextField *textField = [alertView textFieldAtIndex:0];
-        if (textField.text.length > 0) {
-            [[FEPlaylistManager sharedManager] createPlaylistWithName:textField.text];
+        NSString *name = [textField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (name.length > 0) {
+            [[FEPlaylistManager sharedManager] createPlaylistWithName:name];
             [self.tableView reloadData];
+            [FETheme showToast:@"歌单已创建" inView:self.view];
         }
-    }
-}
-
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 2;
-}
-
-- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 0) return @"本地歌单";
-    return @"音源歌单";
-}
-
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return [FEPlaylistManager sharedManager].localPlaylists.count;
-    return 0; // 音源歌单需要登录后获取
-}
-
-- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *CellId = @"Cell";
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:CellId];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellId];
-    }
-    if (indexPath.section == 0) {
-        FEPlaylist *playlist = [FEPlaylistManager sharedManager].localPlaylists[indexPath.row];
-        cell.textLabel.text = playlist.name;
-    }
-    return cell;
-}
-
-- (BOOL)tableView:(UITableView *)tableView canEditRowAtIndexPath:(NSIndexPath *)indexPath {
-    return indexPath.section == 0;
-}
-
-- (void)tableView:(UITableView *)tableView commitEditingStyle:(UITableViewCellEditingStyle)editingStyle forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (editingStyle == UITableViewCellEditingStyleDelete && indexPath.section == 0) {
-        FEPlaylist *playlist = [FEPlaylistManager sharedManager].localPlaylists[indexPath.row];
-        [[FEPlaylistManager sharedManager] deletePlaylist:playlist];
-        [tableView deleteRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationFade];
     }
 }
 

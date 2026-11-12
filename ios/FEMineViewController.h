@@ -1,4 +1,4 @@
 #import <UIKit/UIKit.h>
 
-@interface FEMineViewController : UIViewController <UITableViewDataSource, UITableViewDelegate>
+@interface FEMineViewController : UIViewController
 @end

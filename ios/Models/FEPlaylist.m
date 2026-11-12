@@ -21,6 +21,9 @@
         self.providerId = [aDecoder decodeObjectForKey:@"providerId"];
         self.tracks = [aDecoder decodeObjectForKey:@"tracks"] ?: [NSMutableArray array];
         self.isLocal = [aDecoder decodeBoolForKey:@"isLocal"];
+        self.resourceType = [aDecoder decodeObjectForKey:@"resourceType"];
+        self.playCount = [aDecoder decodeIntegerForKey:@"playCount"];
+        self.trackCount = [aDecoder decodeIntegerForKey:@"trackCount"];
     }
     return self;
 }
@@ -32,6 +35,9 @@
     [aCoder encodeObject:self.providerId forKey:@"providerId"];
     [aCoder encodeObject:self.tracks forKey:@"tracks"];
     [aCoder encodeBool:self.isLocal forKey:@"isLocal"];
+    [aCoder encodeObject:self.resourceType forKey:@"resourceType"];
+    [aCoder encodeInteger:self.playCount forKey:@"playCount"];
+    [aCoder encodeInteger:self.trackCount forKey:@"trackCount"];
 }
 
 @end

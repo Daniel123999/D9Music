@@ -19,5 +19,13 @@
 @optional
 - (void)getDailyRecommendSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
 - (void)getRadioSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
+- (void)getPersonalizedPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
+- (void)getToplistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
+- (void)getNewSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
+- (void)getNewAlbumsWithCompletion:(void (^)(NSArray<FEPlaylist *> *albums, NSError *error))completion;
+- (void)getPlaylistSquareWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
+- (void)getHighQualityPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
+- (void)likeTrack:(FETrack *)track like:(BOOL)like completion:(void (^)(BOOL success, NSError *error))completion;
+- (void)getLikedSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
 
 @end
