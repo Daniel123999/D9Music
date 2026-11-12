@@ -44,5 +44,7 @@ extern NSString *const FEPlayerDidFailNotification; // userInfo[@"message"]
 - (void)addToPlaylist:(FETrack *)track;
 - (void)trySwitchSourceForTrack:(FETrack *)track;
 - (void)seekToProgress:(double)progress;
+/// 停止播放、清空队列并清除续播记忆（迷你播放器会随之隐藏）
+- (void)stopAndClear;
 
 @end

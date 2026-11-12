@@ -40,6 +40,7 @@
 @property (nonatomic, assign) BOOL showingLyrics;
 @property (nonatomic, assign) BOOL landscapeLayout;
 @property (nonatomic, assign) NSInteger renderedLyricCount;
+@property (nonatomic, assign) NSInteger lastHighlightedLyricIndex;
 @property (nonatomic, assign) CGFloat lastLyricScrollOffset;
 
 @end
@@ -244,26 +245,30 @@
     self.sourceLabel.frame = CGRectMake((width - 100) / 2, landscape ? 14 : 24, 100, 24);
 
     if (landscape) {
-        CGFloat coverSide = MIN(height - 108, 200);
-        CGFloat coverX = 24;
-        CGFloat coverY = MAX(52, (height - coverSide) / 2 - 4);
+        // 横屏只保留“黑胶 + 右侧歌词”这一种模式
+        if (self.showingLyrics) self.showingLyrics = NO;
+
+        CGFloat coverSide = MIN(height - 132, 190);
+        CGFloat coverX = 20;
+        CGFloat coverY = MAX(58, (height - coverSide) / 2 - 2);
         self.coverView.frame = CGRectMake(coverX, coverY, coverSide, coverSide);
 
-        CGFloat rightX = coverX + coverSide + 20;
+        CGFloat rightX = coverX + coverSide + 18;
         CGFloat rightWidth = width - rightX - 16;
 
-        self.titleLabel.frame = CGRectMake(rightX, 44, rightWidth, 24);
-        self.artistLabel.frame = CGRectMake(rightX, 69, rightWidth, 18);
-        self.lyricLabel.frame = CGRectMake(rightX, 90, rightWidth, 34);
+        self.titleLabel.frame = CGRectMake(rightX, 34, rightWidth, 22);
+        self.artistLabel.frame = CGRectMake(rightX, 58, rightWidth, 16);
 
-        self.progressSlider.frame = CGRectMake(rightX, 138, rightWidth, 24);
-        self.timeLabel.frame = CGRectMake(rightX, 164, rightWidth, 14);
+        CGFloat sliderY = height - 108;
+        self.progressSlider.frame = CGRectMake(rightX, sliderY, rightWidth, 22);
+        self.timeLabel.frame = CGRectMake(rightX, sliderY + 23, rightWidth, 12);
 
-        CGFloat rowY = MIN(190, height - 118);
+        CGFloat rowY = height - 62;
         [self layoutControlRowWithCenterX:rightX + rightWidth / 2 y:rowY compact:YES];
 
-        self.lyricsPage.frame = CGRectMake(16, 46, width - 32, MAX(90, rowY - 54));
-        self.scrollView.contentSize = CGSizeMake(width, MAX(height, rowY + 64));
+        // 歌词面板占满右半屏（进度条以上），可显示 6~8 行
+        self.lyricsPage.frame = CGRectMake(rightX - 4, 80, rightWidth + 8, MAX(60, sliderY - 86));
+        self.scrollView.contentSize = CGSizeMake(width, height);
     } else {
         CGFloat safeHeight = height > 0 ? height : 480;
         CGFloat coverSide = MIN(width - 130, safeHeight - 300);
@@ -287,10 +292,32 @@
     }
 
     [self applyCoverShapeForLandscape:landscape];
+    [self applyContentVisibilityForLandscape:landscape];
     [self layoutLyricsPageContents];
     [self updateRotationState];
-    self.progressSlider.hidden = self.showingLyrics && landscape;
-    self.timeLabel.hidden = self.showingLyrics && landscape;
+}
+
+- (void)applyContentVisibilityForLandscape:(BOOL)landscape {
+    if (landscape) {
+        self.coverView.hidden = NO;
+        self.titleLabel.hidden = NO;
+        self.artistLabel.hidden = NO;
+        self.lyricLabel.hidden = YES;
+        self.lyricsPage.hidden = NO;
+        self.progressSlider.hidden = NO;
+        self.timeLabel.hidden = NO;
+        self.lyricsHint.text = @"歌词";
+    } else {
+        BOOL show = self.showingLyrics;
+        self.coverView.hidden = show;
+        self.titleLabel.hidden = show;
+        self.artistLabel.hidden = show;
+        self.lyricLabel.hidden = show;
+        self.lyricsPage.hidden = !show;
+        self.progressSlider.hidden = NO;
+        self.timeLabel.hidden = NO;
+        self.lyricsHint.text = @"歌词 · 右滑回到封面";
+    }
 }
 
 - (void)layoutControlRowWithCenterX:(CGFloat)centerX y:(CGFloat)y compact:(BOOL)compact {
@@ -319,19 +346,21 @@
     if (side <= 1) return;
 
     if (landscape) {
-        self.coverView.layer.cornerRadius = side / 2;
+        // 圆形黑胶：必须 masksToBounds，否则方形的底色会露出来
+        [self.coverView setCornerRadius:side / 2];
+        self.coverView.layer.masksToBounds = YES;
         self.coverView.imageView.layer.cornerRadius = side / 2;
-        self.coverView.layer.shadowOpacity = 0.38;
-        self.coverView.layer.shadowPath = [UIBezierPath bezierPathWithOvalInRect:self.coverView.bounds].CGPath;
+        self.coverView.layer.shadowOpacity = 0;
         self.vinylRing.hidden = NO;
         self.vinylCenter.hidden = NO;
 
-        self.vinylRing.frame = CGRectMake(6, 6, side - 12, side - 12);
-        self.vinylRing.layer.cornerRadius = (side - 12) / 2;
+        self.vinylRing.frame = CGRectMake(5, 5, side - 10, side - 10);
+        self.vinylRing.layer.cornerRadius = (side - 10) / 2;
         self.vinylCenter.frame = CGRectMake((side - 22) / 2, (side - 22) / 2, 22, 22);
         self.vinylCenter.layer.cornerRadius = 11;
     } else {
-        self.coverView.layer.cornerRadius = 22;
+        [self.coverView setCornerRadius:22];
+        self.coverView.layer.masksToBounds = NO;
         self.coverView.imageView.layer.cornerRadius = 22;
         self.coverView.layer.shadowOpacity = 0.5;
         self.coverView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.coverView.bounds cornerRadius:22].CGPath;
@@ -358,16 +387,12 @@
 }
 
 - (void)showLyrics:(BOOL)show {
+    // 横屏只保留“带封面”的播放模式，不支持纯歌词页
+    if (self.landscapeLayout) return;
     if (self.showingLyrics == show) return;
     self.showingLyrics = show;
 
-    self.coverView.hidden = show;
-    self.titleLabel.hidden = show;
-    self.artistLabel.hidden = show;
-    self.lyricLabel.hidden = show;
-    self.progressSlider.hidden = show && self.landscapeLayout;
-    self.timeLabel.hidden = show && self.landscapeLayout;
-    self.lyricsPage.hidden = !show;
+    [self applyContentVisibilityForLandscape:NO];
 
     if (show) {
         [self layoutLyricsPageContents];
@@ -376,31 +401,75 @@
     [self updateRotationState];
 }
 
-- (void)layoutLyricsText {
+- (NSAttributedString *)fe_attributedLyrics {
     NSArray<FELyricLine *> *lines = [FELyricsManager sharedManager].lines;
-    NSMutableArray *texts = [NSMutableArray array];
-    for (FELyricLine *line in lines) {
-        if (line.text.length > 0) [texts addObject:line.text];
+    NSInteger current = [FELyricsManager sharedManager].currentIndex;
+    CGFloat normalSize = self.landscapeLayout ? 13.5 : 13;
+
+    NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
+    style.alignment = NSTextAlignmentCenter;
+    style.lineSpacing = 5;
+
+    UIFont *normalFont = [UIFont systemFontOfSize:normalSize];
+    NSDictionary *normalAttrs = @{NSFontAttributeName: normalFont,
+                                  NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.42],
+                                  NSParagraphStyleAttributeName: style};
+    NSDictionary *highlightAttrs = @{NSFontAttributeName: [UIFont boldSystemFontOfSize:normalSize + 1],
+                                     NSForegroundColorAttributeName: [UIColor whiteColor],
+                                     NSParagraphStyleAttributeName: style};
+
+    NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
+    if (lines.count == 0) {
+        [result appendAttributedString:[[NSAttributedString alloc] initWithString:@"暂无歌词" attributes:normalAttrs]];
+        return result;
     }
-    NSString *text = texts.count > 0 ? [texts componentsJoinedByString:@"\n"] : @"暂无歌词";
-    self.lyricsLabel.text = text;
-    self.lyricsLabel.font = [UIFont systemFontOfSize:self.landscapeLayout ? 14 : 13];
+
+    BOOL hasText = NO;
+    for (NSInteger i = 0; i < (NSInteger)lines.count; i++) {
+        NSString *text = lines[i].text;
+        if (text.length == 0) continue;
+        if (hasText) {
+            [result appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:normalAttrs]];
+        }
+        NSDictionary *attrs = (i == current) ? highlightAttrs : normalAttrs;
+        [result appendAttributedString:[[NSAttributedString alloc] initWithString:text attributes:attrs]];
+        hasText = YES;
+    }
+    if (!hasText) {
+        [result appendAttributedString:[[NSAttributedString alloc] initWithString:@"暂无歌词" attributes:normalAttrs]];
+    }
+    return result;
+}
+
+- (void)layoutLyricsText {
+    self.lyricsLabel.attributedText = [self fe_attributedLyrics];
 
     CGFloat width = MAX(60, self.lyricsScroll.bounds.size.width - 24);
-    CGSize fit = [text boundingRectWithSize:CGSizeMake(width, MAXFLOAT)
-                                    options:NSStringDrawingUsesLineFragmentOrigin
-                                 attributes:@{NSFontAttributeName: self.lyricsLabel.font}
-                                    context:nil].size;
-    self.lyricsLabel.frame = CGRectMake(12, 10, width, ceil(fit.height) + 10);
+    CGSize fit = [self.lyricsLabel sizeThatFits:CGSizeMake(width, MAXFLOAT)];
+    self.lyricsLabel.frame = CGRectMake(12, 10, width, ceil(fit.height) + 8);
     self.lyricsScroll.contentSize = CGSizeMake(self.lyricsScroll.bounds.size.width, self.lyricsLabel.frame.size.height + 20);
-    self.renderedLyricCount = (NSInteger)lines.count;
+    self.renderedLyricCount = (NSInteger)[FELyricsManager sharedManager].lines.count;
+    self.lastHighlightedLyricIndex = [FELyricsManager sharedManager].currentIndex;
     self.lastLyricScrollOffset = -1;
+}
+
+- (void)updateLyricsHighlightIfNeeded {
+    NSInteger current = [FELyricsManager sharedManager].currentIndex;
+    if (current == self.lastHighlightedLyricIndex) return;
+    self.lastHighlightedLyricIndex = current;
+    self.lyricsLabel.attributedText = [self fe_attributedLyrics];
+
+    CGFloat width = MAX(60, self.lyricsScroll.bounds.size.width - 24);
+    CGSize fit = [self.lyricsLabel sizeThatFits:CGSizeMake(width, MAXFLOAT)];
+    self.lyricsLabel.frame = CGRectMake(12, 10, width, ceil(fit.height) + 8);
+    self.lyricsScroll.contentSize = CGSizeMake(self.lyricsScroll.bounds.size.width, self.lyricsLabel.frame.size.height + 20);
 }
 
 - (void)scrollLyricsToCurrentLine:(BOOL)animated {
     NSInteger index = [FELyricsManager sharedManager].currentIndex;
     if (index < 0) return;
-    CGFloat lineHeight = self.lyricsLabel.font.lineHeight;
+    CGFloat normalSize = self.landscapeLayout ? 13.5 : 13;
+    CGFloat lineHeight = [UIFont systemFontOfSize:normalSize].lineHeight + 5;
     CGFloat offset = index * lineHeight + 10 - self.lyricsScroll.bounds.size.height / 2 + lineHeight / 2;
     CGFloat maxOffset = MAX(0, self.lyricsScroll.contentSize.height - self.lyricsScroll.bounds.size.height);
     offset = MAX(0, MIN(offset, maxOffset));
@@ -518,10 +587,12 @@
         self.lyricLabel.text = @"暂无歌词";
     }
 
-    if (self.showingLyrics) {
+    if (self.showingLyrics || self.landscapeLayout) {
         NSInteger count = (NSInteger)[FELyricsManager sharedManager].lines.count;
         if (count != self.renderedLyricCount) {
             [self layoutLyricsText];
+        } else {
+            [self updateLyricsHighlightIfNeeded];
         }
         [self scrollLyricsToCurrentLine:NO];
     }
@@ -557,7 +628,14 @@
 #pragma mark - Actions
 
 - (void)closeTapped {
-    [self dismissViewControllerAnimated:YES completion:nil];
+    __weak typeof(self) weakSelf = self;
+    [self dismissViewControllerAnimated:YES completion:^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        // 退出播放页后回到竖屏，避免外部页面停留在横屏
+        [[UIApplication sharedApplication] setStatusBarOrientation:UIInterfaceOrientationPortrait animated:YES];
+        [UIViewController attemptRotationToDeviceOrientation];
+    }];
 }
 
 - (void)playTapped {

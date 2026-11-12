@@ -126,23 +126,23 @@ static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString 
 
     [self buildSearchBar];
 
-    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 66, self.view.bounds.size.width - 32, 20)];
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 58, self.view.bounds.size.width - 100, 18)];
     self.statusLabel.text = @"歌曲 / 歌单 / 专辑 / 歌手，一次搜索所有已启用音源";
     self.statusLabel.textColor = [FETheme textSecondary];
-    self.statusLabel.font = [UIFont systemFontOfSize:11];
+    self.statusLabel.font = [UIFont systemFontOfSize:10.5];
     [self.view addSubview:self.statusLabel];
 
     self.retryButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.retryButton.frame = CGRectMake(16, 90, 108, 28);
+    self.retryButton.frame = CGRectMake(self.view.bounds.size.width - 78, 54, 62, 24);
     self.retryButton.backgroundColor = [FETheme primary];
-    self.retryButton.layer.cornerRadius = 14;
-    self.retryButton.titleLabel.font = [UIFont boldSystemFontOfSize:11];
+    self.retryButton.layer.cornerRadius = 12;
+    self.retryButton.titleLabel.font = [UIFont boldSystemFontOfSize:10];
     [self.retryButton setTitle:@"重新搜索" forState:UIControlStateNormal];
     [self.retryButton addTarget:self action:@selector(doSearch) forControlEvents:UIControlEventTouchUpInside];
     self.retryButton.hidden = YES;
     [self.view addSubview:self.retryButton];
 
-    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 124, self.view.bounds.size.width, self.view.bounds.size.height - 124) style:UITableViewStylePlain];
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 82, self.view.bounds.size.width, self.view.bounds.size.height - 82) style:UITableViewStylePlain];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     self.tableView.rowHeight = 64;

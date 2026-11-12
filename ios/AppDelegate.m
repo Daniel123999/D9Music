@@ -15,6 +15,7 @@
 #import "PlayerViewController.h"
 #import "FEUpdateUI.h"
 #import "FEAppUpdater.h"
+#import "FESettingsViewController.h"
 
 @implementation AppDelegate
 
@@ -78,16 +79,33 @@
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
+
         UIViewController *old = strongSelf.window.rootViewController;
         NSInteger selected = 0;
+        BOOL wasInSettings = NO;
         if ([old isKindOfClass:[UITabBarController class]]) {
-            selected = ((UITabBarController *)old).selectedIndex;
+            UITabBarController *tab = (UITabBarController *)old;
+            selected = tab.selectedIndex;
+            UIViewController *current = tab.selectedViewController;
+            if ([current isKindOfClass:[UINavigationController class]]) {
+                UIViewController *top = ((UINavigationController *)current).topViewController;
+                wasInSettings = [top isKindOfClass:[FESettingsViewController class]];
+            }
         }
+
         [strongSelf buildRootInterface];
         strongSelf.window.rootViewController = strongSelf.rootTabBarController;
-        strongSelf.rootTabBarController.selectedIndex = selected;
-        [FETheme showToast:[FESettings sharedSettings].darkMode ? @"已切换到夜间模式" : @"已切换到日间模式"
-                    inView:strongSelf.rootTabBarController.view];
+
+        if (wasInSettings) {
+            // 夜间模式切换后仍停留在设置页
+            strongSelf.rootTabBarController.selectedIndex = 2;
+            UINavigationController *nav = (UINavigationController *)strongSelf.rootTabBarController.selectedViewController;
+            [nav pushViewController:[[FESettingsViewController alloc] init] animated:NO];
+        } else {
+            strongSelf.rootTabBarController.selectedIndex = selected;
+            [FETheme showToast:[FESettings sharedSettings].darkMode ? @"已切换到夜间模式" : @"已切换到日间模式"
+                        inView:strongSelf.rootTabBarController.view];
+        }
     });
 }
 

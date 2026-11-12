@@ -10,6 +10,7 @@
     UILabel *_artistLabel;
     UIButton *_playButton;
     UIButton *_nextButton;
+    UIButton *_closeButton;
     UIView *_progressTrack;
     UIView *_progressFill;
     CGFloat _progress;
@@ -51,6 +52,14 @@
         [_nextButton addTarget:self action:@selector(nextTapped) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:_nextButton];
 
+        _closeButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        _closeButton.tintColor = [FETheme textSecondary];
+        [_closeButton setImage:[FEIconView imageWithType:FEIconTypeClose size:CGSizeMake(16, 16)
+                                                   color:[FETheme textSecondary] lineWidth:2.0]
+                      forState:UIControlStateNormal];
+        [_closeButton addTarget:self action:@selector(closeTapped) forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:_closeButton];
+
         _progressTrack = [[UIView alloc] initWithFrame:CGRectZero];
         _progressTrack.backgroundColor = [FETheme separator];
         [self addSubview:_progressTrack];
@@ -74,10 +83,11 @@
     self.layer.shadowPath = [UIBezierPath bezierPathWithRect:self.bounds].CGPath;
 
     _coverView.frame = CGRectMake(12, (height - 40) / 2 - 1, 40, 40);
-    _titleLabel.frame = CGRectMake(62, 12, width - 62 - 100, 17);
-    _artistLabel.frame = CGRectMake(62, 31, width - 62 - 100, 14);
-    _playButton.frame = CGRectMake(width - 84, (height - 38) / 2 - 1, 38, 38);
-    _nextButton.frame = CGRectMake(width - 44, (height - 38) / 2 - 1, 38, 38);
+    _titleLabel.frame = CGRectMake(62, 12, width - 62 - 130, 17);
+    _artistLabel.frame = CGRectMake(62, 31, width - 62 - 130, 14);
+    _closeButton.frame = CGRectMake(width - 36, (height - 32) / 2, 32, 32);
+    _playButton.frame = CGRectMake(width - 110, (height - 38) / 2 - 1, 38, 38);
+    _nextButton.frame = CGRectMake(width - 74, (height - 38) / 2 - 1, 38, 38);
     _progressTrack.frame = CGRectMake(12, height - 3, width - 24, 2);
     _progressFill.frame = CGRectMake(0, 0, _progressTrack.bounds.size.width * _progress, 2);
 }
@@ -115,6 +125,10 @@
 
 - (void)nextTapped {
     [[FEPlayerManager sharedManager] next];
+}
+
+- (void)closeTapped {
+    [[FEPlayerManager sharedManager] stopAndClear];
 }
 
 - (void)handleTap {

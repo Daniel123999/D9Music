@@ -377,6 +377,30 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
     [self savePlaybackStateWithPosition:seconds];
 }
 
+- (void)stopAndClear {
+    [self.player pause];
+    [self unobserveCurrentItem];
+    [self.player replaceCurrentItemWithPlayerItem:nil];
+
+    self.isPlaying = NO;
+    self.currentTrack = nil;
+    [self.playlist removeAllObjects];
+    self.currentIndex = -1;
+    self.resumePosition = 0;
+    self.preserveResumeOnNextStart = NO;
+
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults removeObjectForKey:@"d9.playback.track"];
+    [defaults removeObjectForKey:@"d9.playback.playlist"];
+    [defaults removeObjectForKey:@"d9.playback.index"];
+    [defaults removeObjectForKey:@"d9.playback.position"];
+    [defaults synchronize];
+
+    [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nil;
+    [self postTrackChanged];
+    [self postStateChanged];
+}
+
 #pragma mark - Failure / Source switching
 
 - (void)itemFailedToPlayToEnd:(NSNotification *)notification {
