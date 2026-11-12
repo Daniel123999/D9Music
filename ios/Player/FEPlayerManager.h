@@ -29,7 +29,10 @@ extern NSString *const FEPlayerDidFailNotification; // userInfo[@"message"]
 
 @property (nonatomic, readonly) NSTimeInterval currentTime;
 @property (nonatomic, readonly) NSTimeInterval duration;
+@property (nonatomic, readonly) NSTimeInterval resumePosition;
 @property (nonatomic, strong, readonly) NSArray<FETrack *> *history;
+
+- (void)savePlaybackState;
 
 - (void)playTrack:(FETrack *)track;
 - (void)playTracks:(NSArray<FETrack *> *)tracks startIndex:(NSInteger)index;

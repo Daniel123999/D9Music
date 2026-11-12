@@ -1,6 +1,8 @@
 #import "FEPlayerManager.h"
 #import "FEProviderManager.h"
 #import "FELyricsManager.h"
+#import "FESettings.h"
+#import "FECacheManager.h"
 #import <MediaPlayer/MediaPlayer.h>
 #import <UIKit/UIKit.h>
 #import <math.h>
@@ -19,6 +21,9 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
 @property (nonatomic, assign) BOOL isSwitchingSource;
 @property (nonatomic, assign) NSInteger switchAttempt;
 @property (nonatomic, assign) NSTimeInterval lastNowPlayingUpdate;
+@property (nonatomic, assign) NSTimeInterval resumePosition;
+@property (nonatomic, assign) NSTimeInterval lastStateSaveTime;
+@property (nonatomic, assign) BOOL preserveResumeOnNextStart;
 @end
 
 @implementation FEPlayerManager
@@ -45,10 +50,15 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
         [self activateAudioSession];
         [self setupRemoteCommands];
         [self setupTimeObserver];
+        [self restorePlaybackState];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(applicationWillTerminate:)
                                                      name:UIApplicationWillTerminateNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(applicationDidEnterBackground:)
+                                                     name:UIApplicationDidEnterBackgroundNotification
                                                    object:nil];
     }
     return self;
@@ -75,7 +85,71 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
     [self saveState];
 }
 
+- (void)applicationDidEnterBackground:(NSNotification *)note {
+    [self saveState];
+}
+
 - (void)saveState {
+    if (self.currentTrack == nil) return;
+    NSTimeInterval position = self.currentTime;
+    if (self.player.currentItem == nil || !isfinite(position)) {
+        position = self.resumePosition;
+    }
+    [self savePlaybackStateWithPosition:position];
+}
+
+#pragma mark - Playback memory
+
+- (void)savePlaybackStateWithPosition:(NSTimeInterval)position {
+    if (self.currentTrack == nil) return;
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSData *trackData = [NSKeyedArchiver archivedDataWithRootObject:self.currentTrack];
+    if (trackData) [defaults setObject:trackData forKey:@"d9.playback.track"];
+    NSData *listData = [NSKeyedArchiver archivedDataWithRootObject:self.playlist ?: @[]];
+    if (listData) [defaults setObject:listData forKey:@"d9.playback.playlist"];
+    [defaults setInteger:self.currentIndex forKey:@"d9.playback.index"];
+    [defaults setDouble:(isfinite(position) && position > 0 ? position : 0) forKey:@"d9.playback.position"];
+    [defaults synchronize];
+}
+
+- (void)savePlaybackState {
+    [self saveState];
+}
+
+- (void)restorePlaybackState {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSData *trackData = [defaults objectForKey:@"d9.playback.track"];
+    if (trackData.length == 0) return;
+    FETrack *track = nil;
+    @try {
+        track = [NSKeyedUnarchiver unarchiveObjectWithData:trackData];
+    } @catch (NSException *exception) {
+        track = nil;
+    }
+    if (![track isKindOfClass:[FETrack class]]) return;
+
+    NSData *listData = [defaults objectForKey:@"d9.playback.playlist"];
+    NSArray *list = nil;
+    if (listData.length > 0) {
+        @try {
+            list = [NSKeyedUnarchiver unarchiveObjectWithData:listData];
+        } @catch (NSException *exception) {
+            list = nil;
+        }
+    }
+    if (![list isKindOfClass:[NSArray class]] || list.count == 0) {
+        list = @[track];
+    }
+    NSInteger index = [defaults integerForKey:@"d9.playback.index"];
+    if (index < 0 || index >= (NSInteger)list.count) index = 0;
+
+    self.playlist = [list mutableCopy];
+    self.currentIndex = index;
+    // 上次保存的播放地址可能已过期，恢复后重新向音源解析
+    if (!track.isLocal) track.playUrl = nil;
+    self.currentTrack = track;
+    self.resumePosition = [defaults doubleForKey:@"d9.playback.position"];
+    self.isPlaying = NO;
 }
 
 - (void)setupRemoteCommands {
@@ -123,6 +197,10 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
             strongSelf.lastNowPlayingUpdate = current;
             [strongSelf updateNowPlayingInfo];
         }
+        if (fabs(current - strongSelf.lastStateSaveTime) >= 5.0 && strongSelf.isPlaying) {
+            strongSelf.lastStateSaveTime = current;
+            [strongSelf savePlaybackStateWithPosition:current];
+        }
     }];
 }
 
@@ -139,11 +217,24 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
 - (void)playTrack:(FETrack *)track {
     if (track == nil) return;
 
+    if (!self.preserveResumeOnNextStart) {
+        self.resumePosition = 0;
+    }
+    self.preserveResumeOnNextStart = NO;
+
     self.currentTrack = track;
     self.switchAttempt = 0;
     [self addHistoryTrack:track];
     [self postTrackChanged];
     [self notifyLyricsForTrack:track];
+    [self savePlaybackStateWithPosition:0];
+
+    // 已缓存的歌曲优先使用本地文件，省流量且更稳定
+    NSInteger quality = [FESettings sharedSettings].preferredQuality;
+    NSString *cached = [[FECacheManager sharedManager] cachedPathForTrack:track quality:quality];
+    if (cached.length > 0) {
+        track.playUrl = cached;
+    }
 
     if (track.playUrl.length > 0) {
         [self startPlaybackForTrack:track urlString:track.playUrl];
@@ -171,6 +262,8 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
             if (playUrl.length > 0) {
                 track.playUrl = playUrl;
                 [strongSelf startPlaybackForTrack:track urlString:playUrl];
+                NSInteger quality = [FESettings sharedSettings].preferredQuality;
+                [[FECacheManager sharedManager] cacheTrack:track url:playUrl quality:quality completion:nil];
             } else {
                 NSLog(@"[FEPlayer] resolve failed for %@: %@", track.title, error);
                 [strongSelf handlePlaybackFailure];
@@ -219,8 +312,13 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
 }
 
 - (void)play {
-    if (self.player.currentItem == nil && self.currentTrack.playUrl.length > 0) {
-        [self startPlaybackForTrack:self.currentTrack urlString:self.currentTrack.playUrl];
+    if (self.player.currentItem == nil) {
+        if (self.currentTrack == nil) return;
+        // 恢复上次退出时的歌曲与进度
+        if (self.resumePosition > 1) {
+            self.preserveResumeOnNextStart = YES;
+        }
+        [self playTrack:self.currentTrack];
         return;
     }
     [self activateAudioSession];
@@ -235,6 +333,7 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
     self.isPlaying = NO;
     [self postStateChanged];
     [self updateNowPlayingInfo];
+    [self saveState];
 }
 
 - (void)toggle {
@@ -275,6 +374,7 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
     if (!CMTIME_IS_VALID(duration)) return;
     double seconds = CMTimeGetSeconds(duration) * MAX(0.0, MIN(1.0, progress));
     [self.player seekToTime:CMTimeMakeWithSeconds(seconds, 600)];
+    [self savePlaybackStateWithPosition:seconds];
 }
 
 #pragma mark - Failure / Source switching
@@ -367,6 +467,17 @@ static NSString *const FEAVURLAssetHTTPHeaderFieldsKey = @"AVURLAssetHTTPHeaderF
         AVPlayerItem *item = (AVPlayerItem *)object;
         if (item.status == AVPlayerItemStatusReadyToPlay) {
             self.switchAttempt = 0;
+            if (self.resumePosition > 0) {
+                NSTimeInterval position = self.resumePosition;
+                CMTime itemDuration = item.duration;
+                if (CMTIME_IS_VALID(itemDuration)) {
+                    double total = CMTimeGetSeconds(itemDuration);
+                    if (isfinite(total) && total > 1 && position > total - 1) position = MAX(0, total - 1);
+                }
+                [self.player seekToTime:CMTimeMakeWithSeconds(position, 600)];
+                self.resumePosition = 0;
+                self.preserveResumeOnNextStart = NO;
+            }
             if (self.isPlaying == NO) {
                 [self.player play];
                 self.isPlaying = YES;

@@ -13,6 +13,8 @@
 #import "FEIconView.h"
 #import "FESettings.h"
 #import "PlayerViewController.h"
+#import "FEUpdateUI.h"
+#import "FEAppUpdater.h"
 
 @implementation AppDelegate
 
@@ -38,6 +40,13 @@
 
     self.window.rootViewController = [self rootTabBarController];
     [self.window makeKeyAndVisible];
+
+    [FEAppUpdater cleanupStalePackages];
+    if ([FEUpdateUI autoCheckEnabled]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [FEUpdateUI checkForUpdatesFrom:self.rootTabBarController silent:YES];
+        });
+    }
 
     return YES;
 }

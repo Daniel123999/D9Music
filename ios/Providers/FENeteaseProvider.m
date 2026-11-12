@@ -1,5 +1,6 @@
 #import "FENeteaseProvider.h"
 #import "FEHttpRequest.h"
+#import "FESettings.h"
 
 static id FEDictObject(id dict, NSString *key) {
     if (![dict isKindOfClass:[NSDictionary class]]) return nil;
@@ -165,7 +166,11 @@ static NSString *FEString(id value) {
         return;
     }
 
-    [self fe_requestSongURL:track.trackId br:320000 completion:^(NSString *url) {
+    NSInteger preferred = [FESettings sharedSettings].preferredQuality;
+    NSArray *chain = preferred == 2 ? @[@999000, @320000, @128000]
+                     : preferred == 0 ? @[@128000]
+                                      : @[@320000, @128000];
+    [self fe_requestSongURL:track.trackId rates:chain completion:^(NSString *url) {
         if (url.length > 0) {
             if (completion) completion(url, nil);
             return;
@@ -173,6 +178,22 @@ static NSString *FEString(id value) {
         // 免费歌曲直链兜底：AVPlayer 会自动跟随 302 跳转
         NSString *outer = [NSString stringWithFormat:@"https://music.163.com/song/media/outer/url?id=%@.mp3", track.trackId];
         if (completion) completion(outer, nil);
+    }];
+}
+
+- (void)fe_requestSongURL:(NSString *)songId rates:(NSArray *)rates completion:(void (^)(NSString *url))completion {
+    if (rates.count == 0) {
+        if (completion) completion(nil);
+        return;
+    }
+    NSInteger br = [rates[0] integerValue];
+    NSArray *rest = rates.count > 1 ? [rates subarrayWithRange:NSMakeRange(1, rates.count - 1)] : @[];
+    [self fe_requestSongURL:songId br:br completion:^(NSString *url) {
+        if (url.length > 0) {
+            if (completion) completion(url);
+        } else {
+            [self fe_requestSongURL:songId rates:rest completion:completion];
+        }
     }];
 }
 
@@ -196,8 +217,6 @@ static NSString *FEString(id value) {
         }
         if (found.length > 0) {
             if (completion) completion(found);
-        } else if (br > 128000) {
-            [self fe_requestSongURL:songId br:128000 completion:completion];
         } else {
             if (completion) completion(nil);
         }

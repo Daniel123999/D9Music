@@ -15,13 +15,10 @@
 
 @interface FERecommendViewController ()
 @property (nonatomic, strong) UIScrollView *scrollView;
-@property (nonatomic, strong) UIScrollView *playlistScroll;
-@property (nonatomic, strong) UIView *songsCard;
-@property (nonatomic, strong) UILabel *songsHint;
-@property (nonatomic, strong) UIActivityIndicatorView *playlistSpinner;
-@property (nonatomic, strong) NSArray<FETrack *> *feNewSongs;
-@property (nonatomic, strong) NSArray<FEPlaylist *> *recommendPlaylists;
+@property (nonatomic, strong) UIView *sectionsContainer;
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *sections;
 @property (nonatomic, assign) CGFloat contentBottom;
+@property (nonatomic, strong) UILabel *emptyHint;
 @end
 
 @implementation FERecommendViewController
@@ -30,10 +27,11 @@
     [super viewDidLoad];
     self.view.backgroundColor = [FETheme background];
     self.automaticallyAdjustsScrollViewInsets = NO;
+    self.sections = [NSMutableArray array];
 
     self.scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
     self.scrollView.alwaysBounceVertical = YES;
-    self.scrollView.contentInset = UIEdgeInsetsMake(24, 0, 80, 0);
+    self.scrollView.contentInset = UIEdgeInsetsMake(24, 0, 100, 0);
     self.scrollView.showsVerticalScrollIndicator = NO;
     [self.view addSubview:self.scrollView];
 
@@ -93,7 +91,7 @@
     [searchPill addSubview:searchIcon];
 
     UILabel *searchLabel = [[UILabel alloc] initWithFrame:CGRectMake(36, 0, cardWidth - 80, 30)];
-    searchLabel.text = @"搜索歌曲、歌手、专辑";
+    searchLabel.text = @"多音源搜索歌曲、歌手、专辑";
     searchLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.9];
     searchLabel.font = [UIFont systemFontOfSize:12];
     [searchPill addSubview:searchLabel];
@@ -129,36 +127,19 @@
         [self.scrollView addSubview:card];
     }
 
-    // 推荐歌单
-    [self addSectionHeader:@"推荐歌单" action:@"更多" actionTag:50 y:378];
-    self.playlistScroll = [[UIScrollView alloc] initWithFrame:CGRectMake(0, 410, width, 176)];
-    self.playlistScroll.showsHorizontalScrollIndicator = NO;
-    self.playlistScroll.contentInset = UIEdgeInsetsMake(0, 12, 0, 12);
-    [self.scrollView addSubview:self.playlistScroll];
+    self.sectionsContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 372, width, 1)];
+    self.sectionsContainer.backgroundColor = [UIColor clearColor];
+    [self.scrollView addSubview:self.sectionsContainer];
 
-    self.playlistSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
-    self.playlistSpinner.center = CGPointMake(width / 2, 480);
-    [self.scrollView addSubview:self.playlistSpinner];
-    [self.playlistSpinner startAnimating];
+    self.emptyHint = [[UILabel alloc] initWithFrame:CGRectMake(12, 390, width - 24, 60)];
+    self.emptyHint.text = @"登录网易云或 QQ 音乐后，这里会出现对应音源的推荐";
+    self.emptyHint.textColor = [FETheme textSecondary];
+    self.emptyHint.font = [UIFont systemFontOfSize:12];
+    self.emptyHint.textAlignment = NSTextAlignmentCenter;
+    self.emptyHint.numberOfLines = 2;
+    [self.scrollView addSubview:self.emptyHint];
 
-    // 新歌速递
-    [self addSectionHeader:@"新歌速递" action:@"查看全部" actionTag:60 y:598];
-    self.songsHint = [[UILabel alloc] initWithFrame:CGRectMake(12, 632, width - 24, 44)];
-    self.songsHint.text = @"正在加载新歌…";
-    self.songsHint.textColor = [FETheme textSecondary];
-    self.songsHint.font = [UIFont systemFontOfSize:12];
-    self.songsHint.textAlignment = NSTextAlignmentCenter;
-    [self.scrollView addSubview:self.songsHint];
-
-    self.songsCard = [[UIView alloc] initWithFrame:CGRectMake(12, 634, width - 24, 1)];
-    self.songsCard.backgroundColor = [FETheme card];
-    self.songsCard.layer.cornerRadius = 18;
-    self.songsCard.layer.masksToBounds = YES;
-    self.songsCard.hidden = YES;
-    [self.scrollView addSubview:self.songsCard];
-
-    self.contentBottom = 700;
-    self.scrollView.contentSize = CGSizeMake(width, self.contentBottom);
+    self.scrollView.contentSize = CGSizeMake(width, 700);
 }
 
 - (void)addSectionHeader:(NSString *)title action:(NSString *)action actionTag:(NSInteger)tag y:(CGFloat)y {
@@ -166,8 +147,10 @@
                                                                       title:title
                                                                 actionTitle:action];
     if (action.length > 0) {
-        header.actionButton.tag = tag;
-        [header.actionButton addTarget:self action:@selector(sectionActionTapped:) forControlEvents:UIControlEventTouchUpInside];
+        if (header.actionButton.superview == nil) {
+            header.actionButton.tag = tag;
+            [header.actionButton addTarget:self action:@selector(sectionActionTapped:) forControlEvents:UIControlEventTouchUpInside];
+        }
     }
     [self.scrollView addSubview:header];
 }
@@ -181,150 +164,179 @@
     return nil;
 }
 
-- (void)loadData {
+- (NSArray *)recommendationProviders {
+    FEProviderManager *manager = [FEProviderManager sharedManager];
+    NSMutableArray *result = [NSMutableArray array];
+    for (id<FEProviderProtocol> provider in [manager orderedProviders]) {
+        if (!provider.isLoggedIn) continue;
+        if (![provider respondsToSelector:@selector(getPersonalizedPlaylistsWithCompletion:)] &&
+            ![provider respondsToSelector:@selector(getNewSongsWithCompletion:)]) continue;
+        [result addObject:provider];
+    }
+    if (result.count > 0) return result;
+
+    // 都没登录时，用网易云公开推荐兜底，避免页面空白
     FENeteaseProvider *netease = [self neteaseProvider];
-    if (netease == nil) {
-        [self.playlistSpinner stopAnimating];
-        self.songsHint.text = @"没有可用的音源";
-        return;
-    }
-
-    __weak typeof(self) weakSelf = self;
-    [netease getPersonalizedPlaylistsWithCompletion:^(NSArray<FEPlaylist *> *playlists, NSError *error) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        [strongSelf.playlistSpinner stopAnimating];
-        strongSelf.recommendPlaylists = playlists;
-        [strongSelf reloadPlaylists];
-    }];
-
-    [netease getNewSongsWithCompletion:^(NSArray<FETrack *> *tracks, NSError *error) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        strongSelf.feNewSongs = tracks;
-        [strongSelf reloadNewSongs];
-    }];
+    return netease ? @[netease] : @[];
 }
 
-- (void)reloadPlaylists {
-    for (UIView *view in [self.playlistScroll.subviews copy]) {
-        [view removeFromSuperview];
-    }
-    if (self.recommendPlaylists.count == 0) {
-        UILabel *hint = [[UILabel alloc] initWithFrame:CGRectMake(12, 0, self.view.bounds.size.width - 24, 120)];
-        hint.text = @"推荐歌单加载失败，下拉重试";
-        hint.textColor = [FETheme textSecondary];
-        hint.font = [UIFont systemFontOfSize:12];
-        hint.textAlignment = NSTextAlignmentCenter;
-        [self.playlistScroll addSubview:hint];
+- (void)loadData {
+    NSArray *providers = [self recommendationProviders];
+    if (providers.count == 0) {
+        self.emptyHint.hidden = NO;
         return;
     }
+    self.emptyHint.hidden = YES;
 
-    CGFloat itemWidth = 126;
-    CGFloat coverSide = 126;
-    for (NSInteger i = 0; i < (NSInteger)self.recommendPlaylists.count; i++) {
-        FEPlaylist *playlist = self.recommendPlaylists[i];
-        CGFloat x = i * (itemWidth + 12);
+    for (id<FEProviderProtocol> provider in providers) {
+        NSMutableDictionary *section = [@{
+            @"provider": provider,
+            @"name": [NSString stringWithFormat:@"%@推荐", provider.providerName],
+            @"playlists": [NSMutableArray array],
+            @"tracks": [NSMutableArray array]
+        } mutableCopy];
+        [self.sections addObject:section];
 
-        FECoverView *cover = [[FECoverView alloc] initWithFrame:CGRectMake(x, 0, coverSide, coverSide)];
-        [cover setCornerRadius:16];
-        [cover setImageURL:playlist.coverUrl];
-        [self.playlistScroll addSubview:cover];
-
-        UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(x, coverSide + 6, itemWidth, 30)];
-        name.text = playlist.name;
-        name.font = [UIFont systemFontOfSize:11.5];
-        name.textColor = [FETheme textPrimary];
-        name.numberOfLines = 2;
-        [self.playlistScroll addSubview:name];
-
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.frame = CGRectMake(x, 0, itemWidth, 160);
-        button.tag = 5000 + i;
-        [button addTarget:self action:@selector(playlistTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [self.playlistScroll addSubview:button];
+        if ([provider respondsToSelector:@selector(getPersonalizedPlaylistsWithCompletion:)]) {
+            [provider getPersonalizedPlaylistsWithCompletion:^(NSArray<FEPlaylist *> *playlists, NSError *error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [section[@"playlists"] setArray:playlists ?: @[]];
+                    [self rebuildSections];
+                });
+            }];
+        }
+        if ([provider respondsToSelector:@selector(getNewSongsWithCompletion:)]) {
+            [provider getNewSongsWithCompletion:^(NSArray<FETrack *> *tracks, NSError *error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [section[@"tracks"] setArray:tracks ?: @[]];
+                    [self rebuildSections];
+                });
+            }];
+        }
     }
-    self.playlistScroll.contentSize = CGSizeMake(self.recommendPlaylists.count * (itemWidth + 12) + 12, 176);
 }
 
-- (void)reloadNewSongs {
-    if (self.feNewSongs.count == 0) {
-        self.songsHint.text = @"新歌加载失败，请检查网络";
-        return;
-    }
-    self.songsHint.hidden = YES;
-    self.songsCard.hidden = NO;
-    for (UIView *view in [self.songsCard.subviews copy]) {
+- (void)rebuildSections {
+    for (UIView *view in [self.sectionsContainer.subviews copy]) {
         [view removeFromSuperview];
     }
 
-    CGFloat width = self.songsCard.bounds.size.width;
-    NSInteger count = MIN((NSInteger)self.feNewSongs.count, 6);
-    CGFloat rowHeight = 62;
+    CGFloat width = self.view.bounds.size.width;
+    CGFloat y = 0;
 
-    for (NSInteger i = 0; i < count; i++) {
-        FETrack *track = self.feNewSongs[i];
+    for (NSInteger s = 0; s < (NSInteger)self.sections.count; s++) {
+        NSDictionary *section = self.sections[s];
+        NSArray *playlists = section[@"playlists"];
+        NSArray<FETrack *> *tracks = section[@"tracks"];
+        if (playlists.count == 0 && tracks.count == 0) continue;
 
-        FECoverView *cover = [[FECoverView alloc] initWithFrame:CGRectMake(12, i * rowHeight + 9, 44, 44)];
-        [cover setCornerRadius:10];
-        [cover setImageURL:track.coverUrl];
-        [self.songsCard addSubview:cover];
+        UILabel *header = [[UILabel alloc] initWithFrame:CGRectMake(12, y, width - 24, 24)];
+        header.text = section[@"name"];
+        header.font = [UIFont boldSystemFontOfSize:16];
+        header.textColor = [FETheme textPrimary];
+        [self.sectionsContainer addSubview:header];
+        y += 30;
 
-        UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(66, i * rowHeight + 12, width - 66 - 40, 19)];
-        title.text = track.title;
-        title.font = [UIFont systemFontOfSize:13.5];
-        title.textColor = [FETheme textPrimary];
-        title.lineBreakMode = NSLineBreakByTruncatingTail;
-        [self.songsCard addSubview:title];
+        if (playlists.count > 0) {
+            UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:CGRectMake(0, y, width, 170)];
+            scroll.showsHorizontalScrollIndicator = NO;
+            scroll.contentInset = UIEdgeInsetsMake(0, 12, 0, 12);
+            [self.sectionsContainer addSubview:scroll];
 
-        UILabel *artist = [[UILabel alloc] initWithFrame:CGRectMake(66, i * rowHeight + 33, width - 66 - 40, 16)];
-        artist.text = track.artist;
-        artist.font = [UIFont systemFontOfSize:10.5];
-        artist.textColor = [FETheme textSecondary];
-        artist.lineBreakMode = NSLineBreakByTruncatingTail;
-        [self.songsCard addSubview:artist];
+            CGFloat itemWidth = 122;
+            for (NSInteger i = 0; i < (NSInteger)playlists.count; i++) {
+                FEPlaylist *playlist = playlists[i];
+                CGFloat x = i * (itemWidth + 12);
 
-        FEIconView *play = [[FEIconView alloc] initWithFrame:CGRectMake(width - 36, i * rowHeight + 21, 18, 18) iconType:FEIconTypePlay];
-        play.tintColor = [FETheme primary];
-        play.userInteractionEnabled = NO;
-        [self.songsCard addSubview:play];
+                FECoverView *cover = [[FECoverView alloc] initWithFrame:CGRectMake(x, 0, itemWidth, itemWidth)];
+                [cover setCornerRadius:14];
+                [cover setImageURL:playlist.coverUrl];
+                [scroll addSubview:cover];
 
-        if (i < count - 1) {
-            UIView *line = [[UIView alloc] initWithFrame:CGRectMake(66, (i + 1) * rowHeight - 0.5, width - 78, 0.5)];
-            line.backgroundColor = [FETheme separator];
-            [self.songsCard addSubview:line];
+                UILabel *name = [[UILabel alloc] initWithFrame:CGRectMake(x, itemWidth + 5, itemWidth, 30)];
+                name.text = playlist.name;
+                name.font = [UIFont systemFontOfSize:11];
+                name.textColor = [FETheme textPrimary];
+                name.numberOfLines = 2;
+                [scroll addSubview:name];
+
+                UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+                button.frame = CGRectMake(x, 0, itemWidth, 158);
+                button.tag = s * 1000 + i;
+                [button addTarget:self action:@selector(playlistTapped:) forControlEvents:UIControlEventTouchUpInside];
+                [scroll addSubview:button];
+            }
+            scroll.contentSize = CGSizeMake(playlists.count * (itemWidth + 12) + 12, 170);
+            y += 180;
         }
 
-        UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
-        button.frame = CGRectMake(0, i * rowHeight, width, rowHeight);
-        button.tag = 6000 + i;
-        [button addTarget:self action:@selector(newSongTapped:) forControlEvents:UIControlEventTouchUpInside];
-        [self.songsCard addSubview:button];
+        if (tracks.count > 0) {
+            NSInteger count = MIN((NSInteger)tracks.count, 5);
+            CGFloat rowHeight = 58;
+            UIView *card = [[UIView alloc] initWithFrame:CGRectMake(12, y, width - 24, count * rowHeight)];
+            card.backgroundColor = [FETheme card];
+            card.layer.cornerRadius = 18;
+            card.layer.masksToBounds = YES;
+            [self.sectionsContainer addSubview:card];
+
+            for (NSInteger i = 0; i < count; i++) {
+                FETrack *track = tracks[i];
+
+                FECoverView *cover = [[FECoverView alloc] initWithFrame:CGRectMake(10, i * rowHeight + 7, 42, 42)];
+                [cover setCornerRadius:9];
+                [cover setImageURL:track.coverUrl];
+                [card addSubview:cover];
+
+                UILabel *title = [[UILabel alloc] initWithFrame:CGRectMake(60, i * rowHeight + 9, width - 24 - 60 - 40, 19)];
+                title.text = track.title;
+                title.font = [UIFont systemFontOfSize:13];
+                title.textColor = [FETheme textPrimary];
+                title.lineBreakMode = NSLineBreakByTruncatingTail;
+                [card addSubview:title];
+
+                UILabel *artist = [[UILabel alloc] initWithFrame:CGRectMake(60, i * rowHeight + 29, width - 24 - 60 - 40, 16)];
+                artist.text = track.artist;
+                artist.font = [UIFont systemFontOfSize:10.5];
+                artist.textColor = [FETheme textSecondary];
+                artist.lineBreakMode = NSLineBreakByTruncatingTail;
+                [card addSubview:artist];
+
+                if (i < count - 1) {
+                    UIView *line = [[UIView alloc] initWithFrame:CGRectMake(60, (i + 1) * rowHeight - 0.5, width - 96, 0.5)];
+                    line.backgroundColor = [FETheme separator];
+                    [card addSubview:line];
+                }
+
+                UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+                button.frame = CGRectMake(0, i * rowHeight, width - 24, rowHeight);
+                button.tag = s * 1000 + 500 + i;
+                [button addTarget:self action:@selector(trackTapped:) forControlEvents:UIControlEventTouchUpInside];
+                [card addSubview:button];
+            }
+            y += count * rowHeight + 16;
+        }
+        y += 8;
     }
 
-    self.songsCard.frame = CGRectMake(12, 634, width, count * rowHeight);
-    self.contentBottom = 634 + count * rowHeight + 80;
-    self.scrollView.contentSize = CGSizeMake(self.view.bounds.size.width, self.contentBottom);
+    CGFloat top = 372;
+    self.sectionsContainer.frame = CGRectMake(0, top, width, MAX(1, y));
+    self.emptyHint.hidden = self.sections.count > 0 && y > 0;
+    if (self.emptyHint.hidden == NO) {
+        self.emptyHint.frame = CGRectMake(12, top + 20, width - 24, 60);
+    }
+    self.contentBottom = top + y + 90;
+    self.scrollView.contentSize = CGSizeMake(width, MAX(self.contentBottom, 700));
 }
 
 #pragma mark - Actions
 
 - (void)searchTapped {
-    SearchViewController *vc = [[SearchViewController alloc] init];
-    [self.navigationController pushViewController:vc animated:YES];
+    [self.navigationController pushViewController:[[SearchViewController alloc] init] animated:YES];
 }
 
 - (void)sectionActionTapped:(UIButton *)button {
     if (button.tag == 50) {
         [self pushPlaylistGrid:FEPlaylistSourcePersonalized title:@"推荐歌单"];
-    } else if (button.tag == 60) {
-        if (self.feNewSongs.count == 0) {
-            [FETheme showToast:@"新歌还在加载中" inView:self.view];
-            return;
-        }
-        FETrackListViewController *vc = [[FETrackListViewController alloc] initWithTitle:@"新歌速递" tracks:self.feNewSongs];
-        vc.listSubtitle = @"网易云音乐 · 新歌速递";
-        [self.navigationController pushViewController:vc animated:YES];
     }
 }
 
@@ -376,30 +388,40 @@
 }
 
 - (void)playlistTapped:(UIButton *)button {
-    NSInteger index = button.tag - 5000;
-    if (index < 0 || index >= (NSInteger)self.recommendPlaylists.count) return;
-    FEPlaylist *playlist = self.recommendPlaylists[index];
-    FENeteaseProvider *netease = [self neteaseProvider];
-    if (netease == nil) return;
+    NSInteger sectionIndex = button.tag / 1000;
+    NSInteger index = button.tag % 1000;
+    if (sectionIndex < 0 || sectionIndex >= (NSInteger)self.sections.count) return;
+    NSDictionary *section = self.sections[sectionIndex];
+    NSArray *playlists = section[@"playlists"];
+    if (index < 0 || index >= (NSInteger)playlists.count) return;
+
+    FEPlaylist *playlist = playlists[index];
+    id<FEProviderProtocol> provider = section[@"provider"];
+    if (provider == nil) return;
 
     [FETheme showToast:@"正在加载歌单…" inView:self.view];
-    [netease getPlaylistTracks:playlist completion:^(NSArray<FETrack *> *tracks, NSError *error) {
+    [provider getPlaylistTracks:playlist completion:^(NSArray<FETrack *> *tracks, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (tracks.count == 0) {
                 [FETheme showToast:@"歌单暂时取不到歌曲" inView:self.view];
                 return;
             }
             FETrackListViewController *vc = [[FETrackListViewController alloc] initWithTitle:playlist.name tracks:tracks];
-            vc.listSubtitle = @"网易云音乐 · 推荐歌单";
+            vc.listSubtitle = [NSString stringWithFormat:@"%@ · 推荐歌单", provider.providerName];
             [self.navigationController pushViewController:vc animated:YES];
         });
     }];
 }
 
-- (void)newSongTapped:(UIButton *)button {
-    NSInteger index = button.tag - 6000;
-    if (index < 0 || index >= (NSInteger)self.feNewSongs.count) return;
-    [[FEPlayerManager sharedManager] playTracks:self.feNewSongs startIndex:index];
+- (void)trackTapped:(UIButton *)button {
+    NSInteger sectionIndex = button.tag / 1000;
+    NSInteger index = (button.tag % 1000) - 500;
+    if (sectionIndex < 0 || sectionIndex >= (NSInteger)self.sections.count) return;
+    NSDictionary *section = self.sections[sectionIndex];
+    NSArray *tracks = section[@"tracks"];
+    if (index < 0 || index >= (NSInteger)tracks.count) return;
+
+    [[FEPlayerManager sharedManager] playTracks:tracks startIndex:index];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         id root = self.tabBarController;
         if ([root respondsToSelector:@selector(showPlayer)]) [(id)root showPlayer];

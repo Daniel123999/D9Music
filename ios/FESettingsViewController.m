@@ -4,9 +4,21 @@
 #import "FEWebDAVManager.h"
 #import "FEPlaylistManager.h"
 #import "FEFavoriteManager.h"
+#import "FECacheManager.h"
 #import "FESettings.h"
 #import "FESourceListViewController.h"
 #import "FECloudViewController.h"
+#import "FEUpdateUI.h"
+#import "FEAppUpdater.h"
+
+typedef NS_ENUM(NSInteger, FESettingsSection) {
+    FESettingsSectionAppearance = 0,
+    FESettingsSectionPlayback,
+    FESettingsSectionSources,
+    FESettingsSectionWebDAV,
+    FESettingsSectionUpdate,
+    FESettingsSectionAbout
+};
 
 @interface FESettingsViewController ()
 @property (nonatomic, strong) UITableView *tableView;
@@ -17,8 +29,9 @@
 @property (nonatomic, strong) UISwitch *enableSwitch;
 @property (nonatomic, strong) UISwitch *darkSwitch;
 @property (nonatomic, strong) UISwitch *landscapeSwitch;
+@property (nonatomic, strong) UISwitch *cacheSwitch;
+@property (nonatomic, strong) UISwitch *autoUpdateSwitch;
 @property (nonatomic, assign) BOOL webdavExpanded;
-@property (nonatomic, assign) BOOL didExpandOnce;
 @end
 
 @implementation FESettingsViewController
@@ -40,12 +53,30 @@
     self.tableView.backgroundColor = [FETheme background];
     self.tableView.separatorColor = [FETheme separator];
     self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
-    // 底部预留迷你播放器高度，避免“关于”分组被遮挡
+    // 底部预留迷你播放器高度，避免最后一个分组被遮挡
     self.tableView.contentInset = UIEdgeInsetsMake(0, 0, 120, 0);
     self.tableView.scrollIndicatorInsets = UIEdgeInsetsMake(0, 0, 120, 0);
     [self.view addSubview:self.tableView];
 
     [self setupFields];
+
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(accountChanged:)
+                                                 name:FEAccountDidChangeNotification
+                                               object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.tableView reloadData];
+}
+
+- (void)accountChanged:(NSNotification *)notification {
+    [self.tableView reloadData];
 }
 
 - (void)setupFields {
@@ -95,12 +126,19 @@
     self.landscapeSwitch = [[UISwitch alloc] init];
     self.landscapeSwitch.on = [FESettings sharedSettings].landscapePlayer;
     [self.landscapeSwitch addTarget:self action:@selector(landscapeChanged:) forControlEvents:UIControlEventValueChanged];
+
+    self.cacheSwitch = [[UISwitch alloc] init];
+    self.cacheSwitch.on = [FESettings sharedSettings].cacheEnabled;
+    [self.cacheSwitch addTarget:self action:@selector(cacheSwitchChanged:) forControlEvents:UIControlEventValueChanged];
+
+    self.autoUpdateSwitch = [[UISwitch alloc] init];
+    self.autoUpdateSwitch.on = [FEUpdateUI autoCheckEnabled];
+    [self.autoUpdateSwitch addTarget:self action:@selector(autoUpdateChanged:) forControlEvents:UIControlEventValueChanged];
 }
 
 #pragma mark - Actions
 
 - (void)darkModeChanged:(UISwitch *)sw {
-    // AppDelegate 收到通知后会延迟重建界面，这里只负责写入设置
     [FESettings sharedSettings].darkMode = sw.on;
 }
 
@@ -108,6 +146,17 @@
     [FESettings sharedSettings].landscapePlayer = sw.on;
     [UIViewController attemptRotationToDeviceOrientation];
     [FETheme showToast:sw.on ? @"已开启横屏播放" : @"已关闭横屏播放" inView:self.view];
+}
+
+- (void)cacheSwitchChanged:(UISwitch *)sw {
+    [FESettings sharedSettings].cacheEnabled = sw.on;
+    [[FESettings sharedSettings] save];
+    [FETheme showToast:sw.on ? @"已开启歌曲缓存" : @"已关闭歌曲缓存" inView:self.view];
+}
+
+- (void)autoUpdateChanged:(UISwitch *)sw {
+    [FEUpdateUI setAutoCheckEnabled:sw.on];
+    [FETheme showToast:sw.on ? @"启动时会自动检查更新" : @"已关闭自动检查更新" inView:self.view];
 }
 
 - (void)webdavSwitchChanged:(UISwitch *)sw {
@@ -132,28 +181,38 @@
 #pragma mark - Table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 4;
+    return 6;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (section == 0) return @"外观与播放";
-    if (section == 1) return @"音源";
-    if (section == 2) return @"WebDAV 云同步";
-    return @"关于";
+    switch (section) {
+        case FESettingsSectionAppearance: return @"外观与播放";
+        case FESettingsSectionPlayback: return @"播放与缓存";
+        case FESettingsSectionSources: return @"音源";
+        case FESettingsSectionWebDAV: return @"WebDAV 云同步";
+        case FESettingsSectionUpdate: return @"更新";
+        default: return @"关于";
+    }
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == 0) return @"夜间模式会重建界面以应用新配色；横屏播放仅对播放页生效。";
-    if (section == 1) return @"可同时启用多个音源，并按优先级自动切换。";
-    if (section == 2) return @"配置与 Cookie 仅保存在本机；云端备份包含歌单。";
+    if (section == FESettingsSectionAppearance) return @"夜间模式会重建界面以应用新配色；横屏播放仅对播放页生效。";
+    if (section == FESettingsSectionPlayback) return @"缓存用于离线复听，超过上限会自动清理较早的文件。";
+    if (section == FESettingsSectionSources) return @"可同时启用多个音源，并按优先级自动切换。";
+    if (section == FESettingsSectionWebDAV) return @"配置与 Cookie 仅保存在本机；云端备份包含歌单。";
+    if (section == FESettingsSectionUpdate) return @"更新会从 Gitee / GitHub Release 下载 IPA 并覆盖安装，需要 AppSync Unified。";
     return @"D9Music · iOS 9 / armv7";
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (section == 0) return 2;
-    if (section == 1) return 1;
-    if (section == 2) return self.webdavExpanded ? 11 : 1;
-    return 4;
+    switch (section) {
+        case FESettingsSectionAppearance: return 2;
+        case FESettingsSectionPlayback: return 4;
+        case FESettingsSectionSources: return 1;
+        case FESettingsSectionWebDAV: return self.webdavExpanded ? 11 : 1;
+        case FESettingsSectionUpdate: return 2;
+        default: return 4;
+    }
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -162,8 +221,6 @@
     if (cell == nil) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:CellId];
         cell.backgroundColor = [FETheme card];
-        cell.textLabel.font = [UIFont systemFontOfSize:14];
-        cell.textLabel.textColor = [FETheme textPrimary];
         cell.detailTextLabel.font = [UIFont systemFontOfSize:12];
         cell.detailTextLabel.textColor = [FETheme textSecondary];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -173,11 +230,12 @@
     cell.textLabel.textAlignment = NSTextAlignmentLeft;
     cell.textLabel.font = [UIFont systemFontOfSize:14];
     cell.textLabel.textColor = [FETheme textPrimary];
+    cell.detailTextLabel.text = nil;
     for (UIView *subview in [cell.contentView.subviews copy]) {
         if ([subview isKindOfClass:[UITextField class]]) [subview removeFromSuperview];
     }
 
-    if (indexPath.section == 0) {
+    if (indexPath.section == FESettingsSectionAppearance) {
         if (indexPath.row == 0) {
             cell.textLabel.text = @"夜间模式";
             cell.accessoryView = self.darkSwitch;
@@ -188,14 +246,41 @@
         return cell;
     }
 
-    if (indexPath.section == 1) {
+    if (indexPath.section == FESettingsSectionPlayback) {
+        FESettings *settings = [FESettings sharedSettings];
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"优先音质";
+            cell.detailTextLabel.text = [FESettings qualityTitle:settings.preferredQuality];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleGray;
+        } else if (indexPath.row == 1) {
+            cell.textLabel.text = @"歌曲缓存";
+            cell.accessoryView = self.cacheSwitch;
+        } else if (indexPath.row == 2) {
+            cell.textLabel.text = @"最大缓存容量";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%ld MB", (long)settings.maxCacheMB];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleGray;
+        } else {
+            cell.textLabel.text = @"清理缓存";
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ · %ld 首",
+                                         [FECacheManager formatSize:[[FECacheManager sharedManager] cacheSize]],
+                                         (long)[[FECacheManager sharedManager] cachedFileCount]];
+            cell.textLabel.textColor = [FETheme warning];
+            cell.textLabel.textAlignment = NSTextAlignmentCenter;
+            cell.selectionStyle = UITableViewCellSelectionStyleGray;
+        }
+        return cell;
+    }
+
+    if (indexPath.section == FESettingsSectionSources) {
         cell.textLabel.text = @"音源与登录优先级";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
         cell.selectionStyle = UITableViewCellSelectionStyleGray;
         return cell;
     }
 
-    if (indexPath.section == 2) {
+    if (indexPath.section == FESettingsSectionWebDAV) {
         if (!self.webdavExpanded) {
             cell.textLabel.text = @"WebDAV 云同步";
             cell.detailTextLabel.text = [FEWebDAVManager sharedManager].isEnabled ? @"已启用" : @"未启用";
@@ -203,7 +288,6 @@
             cell.selectionStyle = UITableViewCellSelectionStyleGray;
             return cell;
         }
-
         switch (indexPath.row) {
             case 0:
                 cell.textLabel.text = @"启用 WebDAV";
@@ -250,15 +334,13 @@
                 cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
                 cell.selectionStyle = UITableViewCellSelectionStyleGray;
                 return cell;
-            case 9: {
-                // 恢复配置：按钮样式，而不是开关
+            case 9:
                 cell.textLabel.text = @"从云端恢复配置";
                 cell.textLabel.textColor = [FETheme warning];
                 cell.textLabel.font = [UIFont boldSystemFontOfSize:14];
                 cell.textLabel.textAlignment = NSTextAlignmentCenter;
                 cell.selectionStyle = UITableViewCellSelectionStyleGray;
                 return cell;
-            }
             default:
                 cell.textLabel.text = @"收起 WebDAV 设置";
                 cell.textLabel.textColor = [FETheme textSecondary];
@@ -268,9 +350,22 @@
         }
     }
 
+    if (indexPath.section == FESettingsSectionUpdate) {
+        if (indexPath.row == 0) {
+            cell.textLabel.text = @"检查更新";
+            cell.detailTextLabel.text = [FEUpdateUI currentVersionText];
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleGray;
+        } else {
+            cell.textLabel.text = @"自动检查更新";
+            cell.accessoryView = self.autoUpdateSwitch;
+        }
+        return cell;
+    }
+
     if (indexPath.row == 0) {
         cell.textLabel.text = @"版本";
-        cell.detailTextLabel.text = @"1.3.0 (5)";
+        cell.detailTextLabel.text = [FEUpdateUI currentVersionText];
     } else if (indexPath.row == 1) {
         cell.textLabel.text = @"本地歌单数量";
         cell.detailTextLabel.text = [NSString stringWithFormat:@"%lu", (unsigned long)[FEPlaylistManager sharedManager].localPlaylists.count];
@@ -287,23 +382,41 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
-    if (indexPath.section == 1) {
+    if (indexPath.section == FESettingsSectionPlayback) {
+        if (indexPath.row == 0) {
+            [self showQualityPicker];
+        } else if (indexPath.row == 2) {
+            [self showCacheLimitPicker];
+        } else if (indexPath.row == 3) {
+            [self confirmClearCache];
+        }
+        return;
+    }
+
+    if (indexPath.section == FESettingsSectionSources) {
         [self.navigationController pushViewController:[[FESourceListViewController alloc] init] animated:YES];
         return;
     }
 
-    if (indexPath.section != 2) return;
+    if (indexPath.section == FESettingsSectionUpdate) {
+        if (indexPath.row == 0) {
+            [FEUpdateUI checkForUpdatesFrom:self silent:NO];
+        }
+        return;
+    }
+
+    if (indexPath.section != FESettingsSectionWebDAV) return;
 
     if (!self.webdavExpanded) {
         [self saveConfig];
         self.webdavExpanded = YES;
-        [tableView reloadSections:[NSIndexSet indexSetWithIndex:2] withRowAnimation:UITableViewRowAnimationFade];
+        [tableView reloadSections:[NSIndexSet indexSetWithIndex:FESettingsSectionWebDAV] withRowAnimation:UITableViewRowAnimationFade];
         return;
     }
 
     if (indexPath.row == 10) {
         self.webdavExpanded = NO;
-        [tableView reloadSections:[NSIndexSet indexSetWithIndex:2] withRowAnimation:UITableViewRowAnimationFade];
+        [tableView reloadSections:[NSIndexSet indexSetWithIndex:FESettingsSectionWebDAV] withRowAnimation:UITableViewRowAnimationFade];
         return;
     }
 
@@ -323,8 +436,7 @@
             [FETheme showToast:@"请先启用 WebDAV" inView:self.view];
             return;
         }
-        FECloudViewController *vc = [[FECloudViewController alloc] init];
-        [self.navigationController pushViewController:vc animated:YES];
+        [self.navigationController pushViewController:[[FECloudViewController alloc] init] animated:YES];
     } else if (indexPath.row == 8) {
         [FETheme showToast:@"正在备份…" inView:self.view];
         [[FEWebDAVManager sharedManager] backupConfigToWebDAV:^(BOOL success, NSString *message) {
@@ -341,6 +453,65 @@
     }
 }
 
+#pragma mark - Pickers
+
+- (void)showQualityPicker {
+    NSInteger current = [FESettings sharedSettings].preferredQuality;
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"优先播放音质"
+                                                                   message:@"音源支持时会优先使用该音质，否则自动降级"
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSInteger i = 0; i < 3; i++) {
+        NSString *title = [NSString stringWithFormat:@"%@ · %@", [FESettings qualityTitle:i], [FESettings qualityDetail:i]];
+        if (i == current) title = [title stringByAppendingString:@" ✓"];
+        __weak typeof(self) weakSelf = self;
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            [FESettings sharedSettings].preferredQuality = i;
+            [[FESettings sharedSettings] save];
+            [strongSelf.tableView reloadData];
+            [FETheme showToast:[NSString stringWithFormat:@"优先音质：%@", [FESettings qualityTitle:i]] inView:strongSelf.view];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)showCacheLimitPicker {
+    NSArray *options = @[@100, @200, @500, @1024];
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:@"最大缓存容量"
+                                                                   message:@"超出后自动清理较早的缓存"
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    for (NSNumber *option in options) {
+        NSString *title = [option integerValue] >= 1024 ? @"1 GB" : [NSString stringWithFormat:@"%@ MB", option];
+        if ([option integerValue] == [FESettings sharedSettings].maxCacheMB) {
+            title = [title stringByAppendingString:@" ✓"];
+        }
+        __weak typeof(self) weakSelf = self;
+        [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            [FESettings sharedSettings].maxCacheMB = [option integerValue];
+            [[FESettings sharedSettings] save];
+            [[FECacheManager sharedManager] enforceLimit];
+            [strongSelf.tableView reloadData];
+        }]];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)confirmClearCache {
+    UIAlertView *alert = [[UIAlertView alloc] initWithTitle:@"清理缓存"
+                                                    message:[NSString stringWithFormat:@"将删除 %@ 缓存，确定继续？",
+                                                             [FECacheManager formatSize:[[FECacheManager sharedManager] cacheSize]]]
+                                                   delegate:self
+                                          cancelButtonTitle:@"取消"
+                                          otherButtonTitles:@"清理", nil];
+    alert.tag = 9003;
+    [alert show];
+}
+
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
     if (alertView.tag == 9001 && buttonIndex == 1) {
         [FETheme showToast:@"正在恢复…" inView:self.view];
@@ -351,6 +522,10 @@
             [FETheme showToast:message inView:strongSelf.view];
             [strongSelf.tableView reloadData];
         }];
+    } else if (alertView.tag == 9003 && buttonIndex == 1) {
+        [[FECacheManager sharedManager] clearCache];
+        [self.tableView reloadData];
+        [FETheme showToast:@"缓存已清理" inView:self.view];
     }
 }
 

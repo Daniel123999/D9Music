@@ -15,8 +15,9 @@
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIButton *retryButton;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
-@property (nonatomic, strong) NSMutableArray<FETrack *> *results;
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *groups;
 @property (nonatomic, assign) BOOL searching;
+@property (nonatomic, assign) NSInteger pendingRequests;
 
 @end
 
@@ -26,13 +27,13 @@
     [super viewDidLoad];
     self.title = @"搜索";
     self.view.backgroundColor = [FETheme background];
-    self.results = [NSMutableArray array];
+    self.groups = [NSMutableArray array];
     self.automaticallyAdjustsScrollViewInsets = NO;
 
     [self buildSearchBar];
 
     self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 66, self.view.bounds.size.width - 32, 20)];
-    self.statusLabel.text = @"输入关键词，发现你想听的音乐";
+    self.statusLabel.text = @"输入关键词，一次搜索所有已启用音源";
     self.statusLabel.textColor = [FETheme textSecondary];
     self.statusLabel.font = [UIFont systemFontOfSize:11.5];
     [self.view addSubview:self.statusLabel];
@@ -42,8 +43,8 @@
     self.retryButton.backgroundColor = [FETheme primary];
     self.retryButton.layer.cornerRadius = 14;
     self.retryButton.titleLabel.font = [UIFont boldSystemFontOfSize:11];
-    [self.retryButton setTitle:@"换个音源试试" forState:UIControlStateNormal];
-    [self.retryButton addTarget:self action:@selector(switchProviderAndRetry) forControlEvents:UIControlEventTouchUpInside];
+    [self.retryButton setTitle:@"重新搜索" forState:UIControlStateNormal];
+    [self.retryButton addTarget:self action:@selector(doSearch) forControlEvents:UIControlEventTouchUpInside];
     self.retryButton.hidden = YES;
     [self.view addSubview:self.retryButton];
 
@@ -51,7 +52,7 @@
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     self.tableView.rowHeight = 68;
-    self.tableView.contentInset = UIEdgeInsetsMake(4, 0, 80, 0);
+    self.tableView.contentInset = UIEdgeInsetsMake(4, 0, 100, 0);
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     [FETheme styleTableView:self.tableView];
     self.tableView.separatorInset = UIEdgeInsetsMake(0, 74, 0, 16);
@@ -108,59 +109,114 @@
     }
     if (self.searching) return;
 
-    id<FEProviderProtocol> provider = [FEProviderManager sharedManager].currentProvider;
-    if (provider == nil) {
+    NSArray *providers = [self searchProviders];
+    if (providers.count == 0) {
         [FETheme showToast:@"没有可用的音源" inView:self.view];
         return;
     }
 
     self.searching = YES;
     self.retryButton.hidden = YES;
-    self.statusLabel.text = [NSString stringWithFormat:@"正在 %@ 搜索…", provider.providerName];
-    [self.spinner startAnimating];
-    [self.results removeAllObjects];
+    [self.groups removeAllObjects];
     [self.tableView reloadData];
+    [self.spinner startAnimating];
+
+    NSMutableArray *names = [NSMutableArray array];
+    for (id<FEProviderProtocol> provider in providers) {
+        [names addObject:provider.providerName ?: provider.providerId];
+        NSMutableDictionary *group = [@{
+            @"provider": provider,
+            @"name": provider.providerName ?: provider.providerId,
+            @"tracks": [NSMutableArray array]
+        } mutableCopy];
+        [self.groups addObject:group];
+    }
+    self.statusLabel.text = [NSString stringWithFormat:@"正在 %@ 搜索…", [names componentsJoinedByString:@" / "]];
+    self.pendingRequests = (NSInteger)providers.count;
 
     __weak typeof(self) weakSelf = self;
-    [provider searchWithKeyword:keyword completion:^(NSArray<FETrack *> *tracks, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            strongSelf.searching = NO;
-            [strongSelf.spinner stopAnimating];
-            [strongSelf.results removeAllObjects];
-            [strongSelf.results addObjectsFromArray:tracks ?: @[]];
-            [strongSelf.tableView reloadData];
+    for (NSInteger i = 0; i < (NSInteger)providers.count; i++) {
+        id<FEProviderProtocol> provider = providers[i];
+        NSMutableDictionary *group = self.groups[i];
+        [provider searchWithKeyword:keyword completion:^(NSArray<FETrack *> *tracks, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                __strong typeof(weakSelf) strongSelf = weakSelf;
+                if (!strongSelf) return;
+                [group[@"tracks"] setArray:tracks ?: @[]];
+                [strongSelf finishOneRequest];
+            });
+        }];
+    }
+}
 
-            if (strongSelf.results.count > 0) {
-                strongSelf.statusLabel.text = [NSString stringWithFormat:@"%@ · 找到 %lu 首", provider.providerName, (unsigned long)strongSelf.results.count];
-                strongSelf.retryButton.hidden = YES;
-            } else {
-                strongSelf.statusLabel.text = [NSString stringWithFormat:@"%@ 没有找到结果", provider.providerName];
-                strongSelf.retryButton.hidden = NO;
+- (void)finishOneRequest {
+    self.pendingRequests -= 1;
+    [self.tableView reloadData];
+    if (self.pendingRequests > 0) return;
+
+    self.searching = NO;
+    [self.spinner stopAnimating];
+    NSInteger total = [self totalResultCount];
+    if (total > 0) {
+        NSMutableArray *parts = [NSMutableArray array];
+        for (NSDictionary *group in self.groups) {
+            NSArray *tracks = group[@"tracks"];
+            if (tracks.count > 0) {
+                [parts addObject:[NSString stringWithFormat:@"%@ %lu", group[@"name"], (unsigned long)tracks.count]];
             }
-        });
-    }];
+        }
+        self.statusLabel.text = [NSString stringWithFormat:@"共 %ld 首（%@）", (long)total, [parts componentsJoinedByString:@" · "]];
+        self.retryButton.hidden = YES;
+    } else {
+        self.statusLabel.text = @"所有已启用音源都没有找到结果";
+        self.retryButton.hidden = NO;
+    }
 }
 
-- (void)switchProviderAndRetry {
+- (NSArray *)searchProviders {
     FEProviderManager *manager = [FEProviderManager sharedManager];
-    NSArray *providers = manager.providers;
-    if (providers.count < 2) return;
-    NSInteger currentIndex = [providers indexOfObject:manager.currentProvider];
-    NSInteger nextIndex = (currentIndex + 1) % providers.count;
-    [manager switchToProviderWithId:[providers[nextIndex] providerId]];
-    [FETheme showToast:[NSString stringWithFormat:@"已切换到 %@", [providers[nextIndex] providerName]] inView:self.view];
-    [self doSearch];
+    NSArray *enabled = [manager enabledProviders];
+    if (enabled.count > 0) return enabled;
+    if (manager.currentProvider) return @[manager.currentProvider];
+    return manager.providers;
 }
 
-- (BOOL)textFieldShouldReturn:(UITextField *)textField {
-    [self doSearch];
-    return YES;
+- (NSInteger)totalResultCount {
+    NSInteger total = 0;
+    for (NSDictionary *group in self.groups) {
+        total += [group[@"tracks"] count];
+    }
+    return total;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    NSInteger count = 0;
+    for (NSDictionary *group in self.groups) {
+        if ([group[@"tracks"] count] > 0) count += 1;
+    }
+    return count;
+}
+
+- (NSDictionary *)groupForSection:(NSInteger)section {
+    NSInteger current = -1;
+    for (NSDictionary *group in self.groups) {
+        if ([group[@"tracks"] count] == 0) continue;
+        current += 1;
+        if (current == section) return group;
+    }
+    return nil;
+}
+
+- (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    NSDictionary *group = [self groupForSection:section];
+    if (group == nil) return nil;
+    NSArray *tracks = group[@"tracks"];
+    return [NSString stringWithFormat:@"%@ · %lu 首", group[@"name"], (unsigned long)tracks.count];
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.results.count;
+    NSDictionary *group = [self groupForSection:section];
+    return group ? [group[@"tracks"] count] : 0;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -169,13 +225,19 @@
     if (cell == nil) {
         cell = [[FETrackCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellId];
     }
-    [cell configureWithTrack:self.results[indexPath.row]];
+    NSDictionary *group = [self groupForSection:indexPath.section];
+    NSArray *tracks = group[@"tracks"];
+    if (indexPath.row < (NSInteger)tracks.count) {
+        [cell configureWithTrack:tracks[indexPath.row]];
+    }
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row >= (NSInteger)self.results.count) return;
-    [[FEPlayerManager sharedManager] playTracks:self.results startIndex:indexPath.row];
+    NSDictionary *group = [self groupForSection:indexPath.section];
+    NSArray *tracks = group[@"tracks"];
+    if (indexPath.row >= (NSInteger)tracks.count) return;
+    [[FEPlayerManager sharedManager] playTracks:tracks startIndex:indexPath.row];
     [tableView reloadData];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         id root = self.tabBarController;

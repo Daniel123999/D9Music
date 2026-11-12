@@ -1,5 +1,6 @@
 #import "FEQQProvider.h"
 #import "FEHttpRequest.h"
+#import "FESettings.h"
 
 static NSString *FECookieUserDefaultsKey = @"d9.cookie.qq";
 
@@ -179,6 +180,16 @@ static NSString *FEQQDecodeEntities(NSString *text) {
         return;
     }
     NSString *uin = self.uin.length > 0 ? self.uin : @"0";
+    NSInteger preferred = [FESettings sharedSettings].preferredQuality;
+    NSArray *prefixes = preferred == 2 ? @[@"F000", @"M800", @"C400"]
+                       : preferred == 0 ? @[@"C400", @"M500"]
+                                        : @[@"M800", @"C400"];
+    NSMutableArray *filenames = [NSMutableArray array];
+    for (NSString *prefix in prefixes) {
+        NSString *ext = [prefix isEqualToString:@"F000"] ? @"flac"
+                       : ([prefix hasPrefix:@"M"] ? @"mp3" : @"m4a");
+        [filenames addObject:[NSString stringWithFormat:@"%@%@.%@", prefix, track.trackId, ext]];
+    }
     NSDictionary *payload = @{
         @"req_0": @{
             @"module": @"vkey.GetVkeyServer",
@@ -187,6 +198,7 @@ static NSString *FEQQDecodeEntities(NSString *text) {
                 @"guid": @"10000",
                 @"songmid": @[track.trackId],
                 @"songtype": @[@0],
+                @"filename": filenames,
                 @"uin": uin,
                 @"loginflag": @1,
                 @"platform": @"20"
@@ -204,14 +216,17 @@ static NSString *FEQQDecodeEntities(NSString *text) {
         NSDictionary *reqData = FEQQObject(req, @"data");
         NSArray *infos = FEQQObject(reqData, @"midurlinfo");
         NSArray *sips = FEQQObject(reqData, @"sip");
-        if ([infos isKindOfClass:[NSArray class]] && infos.count > 0) {
-            NSDictionary *info = infos[0];
-            NSString *purl = [info isKindOfClass:[NSDictionary class]] ? FEQQString(info[@"purl"]) : nil;
-            NSString *sip = ([sips isKindOfClass:[NSArray class]] && sips.count > 0) ? FEQQString(sips[0]) : nil;
-            if (purl.length > 0) {
-                playUrl = [NSString stringWithFormat:@"%@%@", sip.length > 0 ? sip : @"https://dl.stream.qqmusic.qq.com/", purl];
-                track.httpHeaders = @{@"Referer": @"https://y.qq.com/",
-                                      @"User-Agent": @"Mozilla/5.0 (iPhone; CPU iPhone OS 9_3 like Mac OS X)"};
+        NSString *sip = ([sips isKindOfClass:[NSArray class]] && sips.count > 0) ? FEQQString(sips[0]) : nil;
+        if ([infos isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *info in infos) {
+                if (![info isKindOfClass:[NSDictionary class]]) continue;
+                NSString *purl = FEQQString(info[@"purl"]);
+                if (purl.length > 0) {
+                    playUrl = [NSString stringWithFormat:@"%@%@", sip.length > 0 ? sip : @"https://dl.stream.qqmusic.qq.com/", purl];
+                    track.httpHeaders = @{@"Referer": @"https://y.qq.com/",
+                                          @"User-Agent": @"Mozilla/5.0 (iPhone; CPU iPhone OS 9_3 like Mac OS X)"};
+                    break;
+                }
             }
         }
         if (playUrl.length == 0) {
@@ -240,6 +255,45 @@ static NSString *FEQQDecodeEntities(NSString *text) {
             if (lyric.length > 0) lyric = FEQQDecodeEntities(lyric);
         }
         if (completion) completion(lyric, error);
+    }];
+}
+
+#pragma mark - Recommendations
+
+- (void)getPersonalizedPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion {
+    NSString *url = @"https://c.y.qq.com/splcloud/fcgi-bin/fcg_get_diss_by_tag.fcg?categoryId=10000000&sortId=5&sin=0&ein=11&format=json&g_tk=5381";
+    [FEHttpRequest GET:url headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSMutableArray *playlists = [NSMutableArray array];
+        id json = [self fe_jsonFromData:data];
+        NSArray *list = FEQQObject(FEQQObject(json, @"data"), @"list");
+        if ([list isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in list) {
+                FEPlaylist *playlist = [self fe_playlistFromDiss:item];
+                if (playlist) {
+                    id listeners = item[@"listennum"];
+                    if ([listeners respondsToSelector:@selector(integerValue)]) playlist.playCount = [listeners integerValue];
+                    [playlists addObject:playlist];
+                }
+            }
+        }
+        if (completion) completion(playlists, playlists.count > 0 ? nil : error);
+    }];
+}
+
+- (void)getNewSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion {
+    NSString *url = @"https://c.y.qq.com/v8/fcg-bin/fcg_v8_toplist_cp.fcg?topid=27&song_begin=0&song_num=12&format=json&g_tk=5381&tpl=3&page=detail&type=top&platform=yqq.json&needNewCode=0";
+    [FEHttpRequest GET:url headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSMutableArray *tracks = [NSMutableArray array];
+        id json = [self fe_jsonFromData:data];
+        NSArray *songlist = FEQQObject(json, @"songlist");
+        if ([songlist isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in songlist) {
+                NSDictionary *info = [item isKindOfClass:[NSDictionary class]] ? item[@"data"] : nil;
+                FETrack *track = [self fe_trackFromSong:info];
+                if (track) [tracks addObject:track];
+            }
+        }
+        if (completion) completion(tracks, tracks.count > 0 ? nil : error);
     }];
 }
 

@@ -7,6 +7,10 @@ static NSString *const FEDarkModeKey = @"d9.settings.darkMode";
 static NSString *const FELandscapeKey = @"d9.settings.landscapePlayer";
 static NSString *const FELastLoginKey = @"d9.account.lastLoginProvider";
 static NSString *const FECustomAvatarKey = @"d9.account.useCustomAvatar";
+static NSString *const FEAutoUpdateKey = @"d9.settings.autoCheckUpdate";
+static NSString *const FEQualityKey = @"d9.settings.preferredQuality";
+static NSString *const FECacheEnabledKey = @"d9.settings.cacheEnabled";
+static NSString *const FEMaxCacheKey = @"d9.settings.maxCacheMB";
 
 @interface FESettings ()
 @property (nonatomic, copy) NSString *customAvatarPath;
@@ -31,6 +35,13 @@ static NSString *const FECustomAvatarKey = @"d9.account.useCustomAvatar";
     _lastLoginProviderId = [defaults stringForKey:FELastLoginKey] ?: @"";
     _useCustomAvatar = [defaults boolForKey:FECustomAvatarKey];
 
+    // 新安装默认值：自动检查更新、开启缓存、200MB、标准音质
+    _autoCheckUpdate = [defaults objectForKey:FEAutoUpdateKey] ? [defaults boolForKey:FEAutoUpdateKey] : YES;
+    _preferredQuality = [defaults objectForKey:FEQualityKey] ? [defaults integerForKey:FEQualityKey] : 1;
+    _cacheEnabled = [defaults objectForKey:FECacheEnabledKey] ? [defaults boolForKey:FECacheEnabledKey] : YES;
+    _maxCacheMB = [defaults objectForKey:FEMaxCacheKey] ? [defaults integerForKey:FEMaxCacheKey] : 200;
+    if (_maxCacheMB < 50) _maxCacheMB = 200;
+
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     NSString *docs = [paths firstObject] ?: NSTemporaryDirectory();
     _customAvatarPath = [docs stringByAppendingPathComponent:@"d9_avatar.jpg"];
@@ -42,6 +53,10 @@ static NSString *const FECustomAvatarKey = @"d9.account.useCustomAvatar";
     [defaults setBool:self.landscapePlayer forKey:FELandscapeKey];
     [defaults setObject:self.lastLoginProviderId ?: @"" forKey:FELastLoginKey];
     [defaults setBool:self.useCustomAvatar forKey:FECustomAvatarKey];
+    [defaults setBool:self.autoCheckUpdate forKey:FEAutoUpdateKey];
+    [defaults setInteger:self.preferredQuality forKey:FEQualityKey];
+    [defaults setBool:self.cacheEnabled forKey:FECacheEnabledKey];
+    [defaults setInteger:self.maxCacheMB forKey:FEMaxCacheKey];
     [defaults synchronize];
 }
 
@@ -100,6 +115,18 @@ static NSString *const FECustomAvatarKey = @"d9.account.useCustomAvatar";
 - (UIImage *)customAvatarImage {
     if (!self.useCustomAvatar) return nil;
     return [UIImage imageWithContentsOfFile:self.customAvatarPath];
+}
+
++ (NSString *)qualityTitle:(NSInteger)index {
+    if (index == 2) return @"无损";
+    if (index == 1) return @"高清";
+    return @"标准";
+}
+
++ (NSString *)qualityDetail:(NSInteger)index {
+    if (index == 2) return @"FLAC / 尽可能无损";
+    if (index == 1) return @"320 kbps";
+    return @"128 kbps";
 }
 
 @end
