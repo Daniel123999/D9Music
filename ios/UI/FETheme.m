@@ -45,10 +45,11 @@
 + (void)applyCardStyle:(UIView *)view radius:(CGFloat)radius {
     view.backgroundColor = [self card];
     view.layer.cornerRadius = radius;
-    view.layer.shadowColor = [UIColor colorWithWhite:0.12 alpha:0.10].CGColor;
+    view.layer.shadowColor = [UIColor colorWithWhite:0.12 alpha:0.08].CGColor;
     view.layer.shadowOpacity = 1.0;
-    view.layer.shadowRadius = 12;
-    view.layer.shadowOffset = CGSizeMake(0, 5);
+    view.layer.shadowRadius = 8;
+    view.layer.shadowOffset = CGSizeMake(0, 4);
+    view.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:view.bounds cornerRadius:radius].CGPath;
     view.layer.masksToBounds = NO;
 }
 

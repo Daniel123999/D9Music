@@ -53,9 +53,8 @@ extern char **environ;
 
 static NSArray *FEUpdateSources(void) {
     return @[
-        @{@"host": @"https://gitee.com",  @"repo": @"jyz2574461147/FuoEvolve9"},
-        @{@"host": @"https://gitee.com",  @"repo": @"Daniel123999/FuoEvolve9"},
-        @{@"host": @"https://github.com", @"repo": @"Daniel123999/FuoEvolve9"}
+        @{@"host": @"https://gitee.com",  @"repo": @"jyz2574461147/D9Music"},
+        @{@"host": @"https://github.com", @"repo": @"Daniel123999/D9Music"}
     ];
 }
 

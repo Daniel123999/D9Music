@@ -7,6 +7,7 @@
 @interface FECurrentPlaylistViewController ()
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UILabel *emptyLabel;
+@property (nonatomic, strong) UIBarButtonItem *editItem;
 @end
 
 @implementation FECurrentPlaylistViewController
@@ -16,20 +17,39 @@
     self.title = @"当前播放列表";
     self.view.backgroundColor = [FETheme background];
     self.automaticallyAdjustsScrollViewInsets = NO;
-    
-    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"清空"
-                                                                              style:UIBarButtonItemStylePlain
-                                                                             target:self
-                                                                             action:@selector(clearPlaylist)];
-    
+
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"‹ 返回"
+                                                                             style:UIBarButtonItemStylePlain
+                                                                            target:self
+                                                                            action:@selector(closeTapped)];
+
+    self.editItem = [[UIBarButtonItem alloc] initWithTitle:@"编辑"
+                                                     style:UIBarButtonItemStylePlain
+                                                    target:self
+                                                    action:@selector(toggleEditing)];
+    UIBarButtonItem *clearItem = [[UIBarButtonItem alloc] initWithTitle:@"清空"
+                                                                  style:UIBarButtonItemStylePlain
+                                                                 target:self
+                                                                 action:@selector(clearPlaylist)];
+    self.navigationItem.rightBarButtonItems = @[clearItem, self.editItem];
+
     self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     self.tableView.rowHeight = 68;
     self.tableView.backgroundColor = [FETheme background];
     self.tableView.separatorInset = UIEdgeInsetsMake(0, 74, 0, 16);
+    self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
     [FETheme styleTableView:self.tableView];
     [self.view addSubview:self.tableView];
+
+    UILabel *hint = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 34)];
+    hint.text = @"点击任意歌曲切换播放 · 左滑或点「编辑」可删除单曲";
+    hint.font = [UIFont systemFontOfSize:10.5];
+    hint.textColor = [FETheme textSecondary];
+    hint.textAlignment = NSTextAlignmentCenter;
+    hint.backgroundColor = [FETheme background];
+    self.tableView.tableHeaderView = hint;
     
     self.emptyLabel = [[UILabel alloc] initWithFrame:CGRectMake(24, 200, self.view.bounds.size.width - 48, 40)];
     self.emptyLabel.text = @"播放列表为空";
@@ -49,6 +69,15 @@
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self reload];
+}
+
+- (void)closeTapped {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)toggleEditing {
+    [self.tableView setEditing:!self.tableView.editing animated:YES];
+    self.editItem.title = self.tableView.editing ? @"完成" : @"编辑";
 }
 
 - (void)reload {

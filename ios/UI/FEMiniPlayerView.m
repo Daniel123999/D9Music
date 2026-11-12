@@ -71,6 +71,7 @@
     [super layoutSubviews];
     CGFloat width = self.bounds.size.width;
     CGFloat height = self.bounds.size.height;
+    self.layer.shadowPath = [UIBezierPath bezierPathWithRect:self.bounds].CGPath;
 
     _coverView.frame = CGRectMake(12, (height - 40) / 2 - 1, 40, 40);
     _titleLabel.frame = CGRectMake(62, 12, width - 62 - 100, 17);

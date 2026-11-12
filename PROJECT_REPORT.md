@@ -13,7 +13,7 @@
 ```text
 应用名：D9Music
 Bundle ID：com.d9music.app
-版本：1.3.1 (build 6)
+版本：1.3.2 (build 7)
 设备/切片：iPhone 4S，armv7（cputype=12, cpusubtype=9）
 最低系统：iOS 9.0
 SDK：iPhoneOS9.3.sdk
@@ -190,14 +190,14 @@ RESULT: OK
 | Gitee | v1.0.0 (id 1290189) | `FuoEvolve9.ipa` | 历史版本，未完成公开下载校验 |
 
 - 下载地址
-  - GitHub: https://github.com/Daniel123999/FuoEvolve9/releases/download/v1.3.1/D9Music.ipa
-  - Gitee: https://gitee.com/jyz2574461147/FuoEvolve9/releases/download/v1.3.1/D9Music.ipa
+  - GitHub: https://github.com/Daniel123999/D9Music/releases/download/v1.3.2/D9Music.ipa
+  - Gitee: https://gitee.com/jyz2574461147/D9Music/releases/download/v1.3.2/D9Music.ipa
 
 ### 5.3 构建通道（2026-11-12 打通）
 
 | 项 | 内容 |
 |---|---|
-| 代码托管 | GitHub `Daniel123999/FuoEvolve9`（主）+ Gitee `jyz2574461147/FuoEvolve9`（镜像） |
+| 代码托管 | GitHub `Daniel123999/D9Music`（主）+ Gitee `jyz2574461147/D9Music`（镜像） |
 | CI | GitHub Actions，`runs-on: macos-15`，Theos + `iPhoneOS9.3.sdk`，`TARGET=iphone:clang:9.3:9.0` |
 | 本次成功（1.3.1） | run `43242463347`，commit `426d6b7`，产物 `D9Music-ipa` 233250 B（解包后 IPA 237316 B） |
 | 产物归档 | `artifacts/verified-ipas/D9Music-v1.3.1-build6-armv7.ipa`、`local-ipas/D9Music-latest-armv7.ipa` |

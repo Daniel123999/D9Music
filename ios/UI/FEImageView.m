@@ -6,8 +6,8 @@ static NSCache *FEImageMemoryCache(void) {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         cache = [[NSCache alloc] init];
-        cache.countLimit = 120;
-        cache.totalCostLimit = 24 * 1024 * 1024;
+        cache.countLimit = 80;
+        cache.totalCostLimit = 12 * 1024 * 1024;
     });
     return cache;
 }
@@ -19,7 +19,7 @@ static NSURLSession *FEImageSession(void) {
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = 15;
         config.timeoutIntervalForResource = 30;
-        config.HTTPMaximumConnectionsPerHost = 4;
+        config.HTTPMaximumConnectionsPerHost = 2;
         config.URLCache = [NSURLCache sharedURLCache];
         session = [NSURLSession sessionWithConfiguration:config];
     });
@@ -27,6 +27,22 @@ static NSURLSession *FEImageSession(void) {
 }
 
 @implementation FEImageLoader
+
+/// 4S 内存有限：封面统一缩到 360px 内再缓存，减少解码与内存占用
++ (UIImage *)fe_downscaledImage:(UIImage *)image maxSide:(CGFloat)maxSide {
+    if (image == nil) return nil;
+    CGSize size = image.size;
+    CGFloat side = MAX(size.width, size.height);
+    if (side <= maxSide || side <= 0) return image;
+
+    CGFloat scale = maxSide / side;
+    CGSize target = CGSizeMake(floor(size.width * scale), floor(size.height * scale));
+    UIGraphicsBeginImageContextWithOptions(target, NO, 1.0);
+    [image drawInRect:CGRectMake(0, 0, target.width, target.height)];
+    UIImage *result = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    return result ?: image;
+}
 
 + (NSString *)fe_normalizedURLString:(NSString *)urlString {
     if (![urlString isKindOfClass:[NSString class]] || urlString.length == 0) return nil;
@@ -71,7 +87,8 @@ static NSURLSession *FEImageSession(void) {
     NSURLSessionDataTask *task = [FEImageSession() dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         UIImage *image = nil;
         if (data.length > 0) {
-            image = [UIImage imageWithData:data];
+            UIImage *decoded = [UIImage imageWithData:data];
+            image = [self fe_downscaledImage:decoded maxSide:360];
         }
         if (image) {
             [FEImageMemoryCache() setObject:image forKey:normalized cost:data.length];
@@ -145,12 +162,9 @@ static NSURLSession *FEImageSession(void) {
         if (!strongSelf) return;
         if (![strongSelf.urlString isEqualToString:requested]) return;
         if (image) {
-            strongSelf.imageView.alpha = 0;
+            strongSelf.imageView.alpha = 1;
             strongSelf.imageView.image = image;
             strongSelf.placeholderView.hidden = YES;
-            [UIView animateWithDuration:0.22 animations:^{
-                strongSelf.imageView.alpha = 1;
-            }];
         }
     }];
 }

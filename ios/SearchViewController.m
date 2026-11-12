@@ -2,10 +2,94 @@
 #import "FETheme.h"
 #import "FEComponents.h"
 #import "FEIconView.h"
+#import "FEImageView.h"
 #import "FEProviderManager.h"
 #import "FETrack.h"
+#import "FEPlaylist.h"
 #import "FEPlayerManager.h"
+#import "FETrackListViewController.h"
 #import "FERootTabBarController.h"
+
+static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString *keyword) {
+    if (primary.length == 0 || keyword.length == 0) return 0;
+    NSString *text = [primary lowercaseString];
+    NSString *key = [keyword lowercaseString];
+    NSInteger score = 0;
+    if ([text isEqualToString:key]) {
+        score = 120;
+    } else if ([text hasPrefix:key]) {
+        score = 90;
+    } else if ([text rangeOfString:key].location != NSNotFound) {
+        score = 60;
+    } else if (secondary.length > 0 && [[secondary lowercaseString] rangeOfString:key].location != NSNotFound) {
+        score = 35;
+    }
+    return score;
+}
+
+@interface FESearchEntityCell : UITableViewCell
+@property (nonatomic, strong) FECoverView *coverView;
+@property (nonatomic, strong) UILabel *nameLabel;
+@property (nonatomic, strong) UILabel *metaLabel;
+@property (nonatomic, strong) FEIconView *chevron;
+@property (nonatomic, assign) BOOL roundCover;
+- (void)configureWithTitle:(NSString *)title meta:(NSString *)meta cover:(NSString *)cover round:(BOOL)round;
+@end
+
+@implementation FESearchEntityCell
+
+- (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
+    self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
+    if (self) {
+        self.backgroundColor = [FETheme card];
+        self.selectionStyle = UITableViewCellSelectionStyleNone;
+
+        _coverView = [[FECoverView alloc] initWithFrame:CGRectZero];
+        [_coverView setCornerRadius:12];
+        [self.contentView addSubview:_coverView];
+
+        _nameLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _nameLabel.font = [UIFont systemFontOfSize:14];
+        _nameLabel.textColor = [FETheme textPrimary];
+        _nameLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [self.contentView addSubview:_nameLabel];
+
+        _metaLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+        _metaLabel.font = [UIFont systemFontOfSize:10.5];
+        _metaLabel.textColor = [FETheme textSecondary];
+        _metaLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+        [self.contentView addSubview:_metaLabel];
+
+        _chevron = [[FEIconView alloc] initWithFrame:CGRectZero iconType:FEIconTypeNext];
+        _chevron.tintColor = [FETheme textSecondary];
+        _chevron.userInteractionEnabled = NO;
+        [self.contentView addSubview:_chevron];
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    CGFloat width = self.bounds.size.width;
+    CGFloat height = self.bounds.size.height;
+    CGFloat side = height - 14;
+    self.coverView.frame = CGRectMake(16, 7, side, side);
+    [self.coverView setCornerRadius:self.roundCover ? side / 2 : 12];
+    self.nameLabel.frame = CGRectMake(16 + side + 12, height / 2 - 19, width - (16 + side + 12) - 40, 19);
+    self.metaLabel.frame = CGRectMake(16 + side + 12, height / 2 + 2, width - (16 + side + 12) - 40, 15);
+    self.chevron.frame = CGRectMake(width - 30, (height - 14) / 2, 14, 14);
+}
+
+- (void)configureWithTitle:(NSString *)title meta:(NSString *)meta cover:(NSString *)cover round:(BOOL)round {
+    self.nameLabel.text = title;
+    self.metaLabel.text = meta;
+    self.roundCover = round;
+    [self.coverView setCornerRadius:round ? (self.coverView.bounds.size.height / 2) : 12];
+    [self.coverView setImageURL:cover];
+    [self setNeedsLayout];
+}
+
+@end
 
 @interface SearchViewController ()
 
@@ -15,9 +99,16 @@
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIButton *retryButton;
 @property (nonatomic, strong) UIActivityIndicatorView *spinner;
-@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *groups;
+@property (nonatomic, copy) NSString *keyword;
+
+@property (nonatomic, strong) NSMutableArray<FETrack *> *songs;
+@property (nonatomic, strong) NSMutableArray<FEPlaylist *> *playlists;
+@property (nonatomic, strong) NSMutableArray<FEPlaylist *> *albums;
+@property (nonatomic, strong) NSMutableArray<FEPlaylist *> *artists;
+
 @property (nonatomic, assign) BOOL searching;
 @property (nonatomic, assign) NSInteger pendingRequests;
+@property (nonatomic, assign) NSInteger totalRequests;
 
 @end
 
@@ -27,15 +118,18 @@
     [super viewDidLoad];
     self.title = @"搜索";
     self.view.backgroundColor = [FETheme background];
-    self.groups = [NSMutableArray array];
+    self.songs = [NSMutableArray array];
+    self.playlists = [NSMutableArray array];
+    self.albums = [NSMutableArray array];
+    self.artists = [NSMutableArray array];
     self.automaticallyAdjustsScrollViewInsets = NO;
 
     [self buildSearchBar];
 
     self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(16, 66, self.view.bounds.size.width - 32, 20)];
-    self.statusLabel.text = @"输入关键词，一次搜索所有已启用音源";
+    self.statusLabel.text = @"歌曲 / 歌单 / 专辑 / 歌手，一次搜索所有已启用音源";
     self.statusLabel.textColor = [FETheme textSecondary];
-    self.statusLabel.font = [UIFont systemFontOfSize:11.5];
+    self.statusLabel.font = [UIFont systemFontOfSize:11];
     [self.view addSubview:self.statusLabel];
 
     self.retryButton = [UIButton buttonWithType:UIButtonTypeCustom];
@@ -51,11 +145,14 @@
     self.tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 124, self.view.bounds.size.width, self.view.bounds.size.height - 124) style:UITableViewStylePlain];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
-    self.tableView.rowHeight = 68;
-    self.tableView.contentInset = UIEdgeInsetsMake(4, 0, 100, 0);
+    self.tableView.rowHeight = 64;
+    self.tableView.estimatedRowHeight = 0;
+    self.tableView.contentInset = UIEdgeInsetsMake(2, 0, 100, 0);
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
-    [FETheme styleTableView:self.tableView];
+    self.tableView.backgroundColor = [FETheme background];
+    self.tableView.separatorColor = [FETheme separator];
     self.tableView.separatorInset = UIEdgeInsetsMake(0, 74, 0, 16);
+    self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectZero];
     [self.view addSubview:self.tableView];
 
     self.spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleGray];
@@ -70,8 +167,11 @@
 
 - (void)buildSearchBar {
     CGFloat width = self.view.bounds.size.width;
+    // 搜索条避免使用阴影，4S 上调起键盘会明显掉帧
     UIView *bar = [[UIView alloc] initWithFrame:CGRectMake(12, 12, width - 24, 44)];
-    [FETheme applyCardStyle:bar radius:22];
+    bar.backgroundColor = [FETheme card];
+    bar.layer.cornerRadius = 22;
+    bar.layer.masksToBounds = YES;
     [self.view addSubview:bar];
 
     FEIconView *icon = [[FEIconView alloc] initWithFrame:CGRectMake(14, 14, 16, 16) iconType:FEIconTypeSearch];
@@ -83,7 +183,7 @@
     self.searchField.borderStyle = UITextBorderStyleNone;
     self.searchField.font = [UIFont systemFontOfSize:13.5];
     self.searchField.textColor = [FETheme textPrimary];
-    self.searchField.placeholder = @"歌曲 / 歌手 / 专辑";
+    self.searchField.placeholder = @"歌曲 / 歌单 / 专辑 / 歌手";
     self.searchField.returnKeyType = UIReturnKeySearch;
     self.searchField.clearButtonMode = UITextFieldViewModeWhileEditing;
     self.searchField.delegate = self;
@@ -99,6 +199,8 @@
     [self.searchButton addTarget:self action:@selector(doSearch) forControlEvents:UIControlEventTouchUpInside];
     [bar addSubview:self.searchButton];
 }
+
+#pragma mark - Search
 
 - (void)doSearch {
     [self.searchField resignFirstResponder];
@@ -116,61 +218,113 @@
     }
 
     self.searching = YES;
+    self.keyword = keyword;
     self.retryButton.hidden = YES;
-    [self.groups removeAllObjects];
+    [self.songs removeAllObjects];
+    [self.playlists removeAllObjects];
+    [self.albums removeAllObjects];
+    [self.artists removeAllObjects];
     [self.tableView reloadData];
     [self.spinner startAnimating];
 
-    NSMutableArray *names = [NSMutableArray array];
+    NSInteger total = 0;
     for (id<FEProviderProtocol> provider in providers) {
-        [names addObject:provider.providerName ?: provider.providerId];
-        NSMutableDictionary *group = [@{
-            @"provider": provider,
-            @"name": provider.providerName ?: provider.providerId,
-            @"tracks": [NSMutableArray array]
-        } mutableCopy];
-        [self.groups addObject:group];
+        total += 1;
+        if ([provider respondsToSelector:@selector(searchPlaylistsWithKeyword:completion:)]) total += 1;
+        if ([provider respondsToSelector:@selector(searchAlbumsWithKeyword:completion:)]) total += 1;
+        if ([provider respondsToSelector:@selector(searchArtistsWithKeyword:completion:)]) total += 1;
     }
-    self.statusLabel.text = [NSString stringWithFormat:@"正在 %@ 搜索…", [names componentsJoinedByString:@" / "]];
-    self.pendingRequests = (NSInteger)providers.count;
+    self.pendingRequests = total;
+    self.totalRequests = total;
+    self.statusLabel.text = [NSString stringWithFormat:@"正在 %ld 个音源搜索「%@」…", (long)providers.count, keyword];
 
     __weak typeof(self) weakSelf = self;
-    for (NSInteger i = 0; i < (NSInteger)providers.count; i++) {
-        id<FEProviderProtocol> provider = providers[i];
-        NSMutableDictionary *group = self.groups[i];
+    for (id<FEProviderProtocol> provider in providers) {
         [provider searchWithKeyword:keyword completion:^(NSArray<FETrack *> *tracks, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                [group[@"tracks"] setArray:tracks ?: @[]];
+                [strongSelf.songs addObjectsFromArray:tracks ?: @[]];
                 [strongSelf finishOneRequest];
             });
         }];
+        if ([provider respondsToSelector:@selector(searchPlaylistsWithKeyword:completion:)]) {
+            [provider searchPlaylistsWithKeyword:keyword completion:^(NSArray<FEPlaylist *> *items, NSError *error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf.playlists addObjectsFromArray:items ?: @[]];
+                    [strongSelf finishOneRequest];
+                });
+            }];
+        }
+        if ([provider respondsToSelector:@selector(searchAlbumsWithKeyword:completion:)]) {
+            [provider searchAlbumsWithKeyword:keyword completion:^(NSArray<FEPlaylist *> *items, NSError *error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf.albums addObjectsFromArray:items ?: @[]];
+                    [strongSelf finishOneRequest];
+                });
+            }];
+        }
+        if ([provider respondsToSelector:@selector(searchArtistsWithKeyword:completion:)]) {
+            [provider searchArtistsWithKeyword:keyword completion:^(NSArray<FEPlaylist *> *items, NSError *error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    __strong typeof(weakSelf) strongSelf = weakSelf;
+                    if (!strongSelf) return;
+                    [strongSelf.artists addObjectsFromArray:items ?: @[]];
+                    [strongSelf finishOneRequest];
+                });
+            }];
+        }
     }
 }
 
 - (void)finishOneRequest {
-    self.pendingRequests -= 1;
-    [self.tableView reloadData];
+    if (self.pendingRequests > 0) self.pendingRequests -= 1;
     if (self.pendingRequests > 0) return;
 
     self.searching = NO;
     [self.spinner stopAnimating];
-    NSInteger total = [self totalResultCount];
+    [self sortResults];
+    [self.tableView reloadData];
+
+    NSInteger total = self.songs.count + self.playlists.count + self.albums.count + self.artists.count;
     if (total > 0) {
-        NSMutableArray *parts = [NSMutableArray array];
-        for (NSDictionary *group in self.groups) {
-            NSArray *tracks = group[@"tracks"];
-            if (tracks.count > 0) {
-                [parts addObject:[NSString stringWithFormat:@"%@ %lu", group[@"name"], (unsigned long)tracks.count]];
-            }
-        }
-        self.statusLabel.text = [NSString stringWithFormat:@"共 %ld 首（%@）", (long)total, [parts componentsJoinedByString:@" · "]];
+        self.statusLabel.text = [NSString stringWithFormat:@"歌曲 %ld · 歌单 %ld · 专辑 %ld · 歌手 %ld",
+                                 (long)self.songs.count, (long)self.playlists.count,
+                                 (long)self.albums.count, (long)self.artists.count];
         self.retryButton.hidden = YES;
     } else {
         self.statusLabel.text = @"所有已启用音源都没有找到结果";
         self.retryButton.hidden = NO;
     }
+}
+
+- (void)sortResults {
+    NSString *keyword = self.keyword ?: @"";
+    [self.songs sortUsingComparator:^NSComparisonResult(FETrack *a, FETrack *b) {
+        NSInteger sa = FESearchScore(a.title, a.artist, keyword);
+        NSInteger sb = FESearchScore(b.title, b.artist, keyword);
+        if (sa != sb) return sa > sb ? NSOrderedAscending : NSOrderedDescending;
+        return [a.title localizedCaseInsensitiveCompare:b.title];
+    }];
+    [self.playlists sortUsingComparator:^NSComparisonResult(FEPlaylist *a, FEPlaylist *b) {
+        NSInteger sa = FESearchScore(a.name, nil, keyword);
+        NSInteger sb = FESearchScore(b.name, nil, keyword);
+        return sa >= sb ? NSOrderedAscending : NSOrderedDescending;
+    }];
+    [self.albums sortUsingComparator:^NSComparisonResult(FEPlaylist *a, FEPlaylist *b) {
+        NSInteger sa = FESearchScore(a.name, nil, keyword);
+        NSInteger sb = FESearchScore(b.name, nil, keyword);
+        return sa >= sb ? NSOrderedAscending : NSOrderedDescending;
+    }];
+    [self.artists sortUsingComparator:^NSComparisonResult(FEPlaylist *a, FEPlaylist *b) {
+        NSInteger sa = FESearchScore(a.name, nil, keyword);
+        NSInteger sb = FESearchScore(b.name, nil, keyword);
+        return sa >= sb ? NSOrderedAscending : NSOrderedDescending;
+    }];
 }
 
 - (NSArray *)searchProviders {
@@ -181,68 +335,117 @@
     return manager.providers;
 }
 
-- (NSInteger)totalResultCount {
-    NSInteger total = 0;
-    for (NSDictionary *group in self.groups) {
-        total += [group[@"tracks"] count];
-    }
-    return total;
-}
+#pragma mark - Table
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    NSInteger count = 0;
-    for (NSDictionary *group in self.groups) {
-        if ([group[@"tracks"] count] > 0) count += 1;
-    }
-    return count;
-}
-
-- (NSDictionary *)groupForSection:(NSInteger)section {
-    NSInteger current = -1;
-    for (NSDictionary *group in self.groups) {
-        if ([group[@"tracks"] count] == 0) continue;
-        current += 1;
-        if (current == section) return group;
-    }
-    return nil;
+    return 4;
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    NSDictionary *group = [self groupForSection:section];
-    if (group == nil) return nil;
-    NSArray *tracks = group[@"tracks"];
-    return [NSString stringWithFormat:@"%@ · %lu 首", group[@"name"], (unsigned long)tracks.count];
+    if (section == 0 && self.songs.count > 0) return [NSString stringWithFormat:@"歌曲 · %lu", (unsigned long)self.songs.count];
+    if (section == 1 && self.playlists.count > 0) return [NSString stringWithFormat:@"歌单 · %lu", (unsigned long)self.playlists.count];
+    if (section == 2 && self.albums.count > 0) return [NSString stringWithFormat:@"专辑 · %lu", (unsigned long)self.albums.count];
+    if (section == 3 && self.artists.count > 0) return [NSString stringWithFormat:@"歌手 · %lu", (unsigned long)self.artists.count];
+    return nil;
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    NSDictionary *group = [self groupForSection:section];
-    return group ? [group[@"tracks"] count] : 0;
+    if (section == 0) return self.songs.count;
+    if (section == 1) return self.playlists.count;
+    if (section == 2) return self.albums.count;
+    if (section == 3) return self.artists.count;
+    return 0;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    static NSString *CellId = @"FESearchTrackCell";
-    FETrackCell *cell = (FETrackCell *)[tableView dequeueReusableCellWithIdentifier:CellId];
-    if (cell == nil) {
-        cell = [[FETrackCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellId];
+    if (indexPath.section == 0) {
+        static NSString *CellId = @"FESearchTrackCell";
+        FETrackCell *cell = (FETrackCell *)[tableView dequeueReusableCellWithIdentifier:CellId];
+        if (cell == nil) {
+            cell = [[FETrackCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellId];
+        }
+        if (indexPath.row < (NSInteger)self.songs.count) {
+            [cell configureWithTrack:self.songs[indexPath.row]];
+        }
+        return cell;
     }
-    NSDictionary *group = [self groupForSection:indexPath.section];
-    NSArray *tracks = group[@"tracks"];
-    if (indexPath.row < (NSInteger)tracks.count) {
-        [cell configureWithTrack:tracks[indexPath.row]];
+
+    static NSString *EntityId = @"FESearchEntityCell";
+    FESearchEntityCell *cell = (FESearchEntityCell *)[tableView dequeueReusableCellWithIdentifier:EntityId];
+    if (cell == nil) {
+        cell = [[FESearchEntityCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:EntityId];
+    }
+
+    if (indexPath.section == 1 && indexPath.row < (NSInteger)self.playlists.count) {
+        FEPlaylist *item = self.playlists[indexPath.row];
+        [cell configureWithTitle:item.name meta:[NSString stringWithFormat:@"歌单 · %@", [self providerNameForId:item.providerId]] cover:item.coverUrl round:NO];
+    } else if (indexPath.section == 2 && indexPath.row < (NSInteger)self.albums.count) {
+        FEPlaylist *item = self.albums[indexPath.row];
+        [cell configureWithTitle:item.name meta:[NSString stringWithFormat:@"专辑 · %@", [self providerNameForId:item.providerId]] cover:item.coverUrl round:NO];
+    } else if (indexPath.section == 3 && indexPath.row < (NSInteger)self.artists.count) {
+        FEPlaylist *item = self.artists[indexPath.row];
+        [cell configureWithTitle:item.name meta:[NSString stringWithFormat:@"歌手 · %@", [self providerNameForId:item.providerId]] cover:item.coverUrl round:YES];
     }
     return cell;
 }
 
+- (NSString *)providerNameForId:(NSString *)providerId {
+    id<FEProviderProtocol> provider = [[FEProviderManager sharedManager] providerWithId:providerId];
+    return provider.providerName ?: @"音源";
+}
+
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *group = [self groupForSection:indexPath.section];
-    NSArray *tracks = group[@"tracks"];
-    if (indexPath.row >= (NSInteger)tracks.count) return;
-    [[FEPlayerManager sharedManager] playTracks:tracks startIndex:indexPath.row];
-    [tableView reloadData];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        id root = self.tabBarController;
-        if ([root respondsToSelector:@selector(showPlayer)]) [(id)root showPlayer];
-    });
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+
+    if (indexPath.section == 0) {
+        if (indexPath.row >= (NSInteger)self.songs.count) return;
+        [[FEPlayerManager sharedManager] playTracks:self.songs startIndex:indexPath.row];
+        [tableView reloadData];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.25 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            id root = self.tabBarController;
+            if ([root respondsToSelector:@selector(showPlayer)]) [(id)root showPlayer];
+        });
+        return;
+    }
+
+    FEPlaylist *item = nil;
+    if (indexPath.section == 1 && indexPath.row < (NSInteger)self.playlists.count) item = self.playlists[indexPath.row];
+    if (indexPath.section == 2 && indexPath.row < (NSInteger)self.albums.count) item = self.albums[indexPath.row];
+    if (indexPath.section == 3 && indexPath.row < (NSInteger)self.artists.count) item = self.artists[indexPath.row];
+    if (item == nil) return;
+
+    id<FEProviderProtocol> provider = [[FEProviderManager sharedManager] providerWithId:item.providerId];
+    if (provider == nil) {
+        [FETheme showToast:@"对应音源未注册" inView:self.view];
+        return;
+    }
+
+    [FETheme showToast:@"正在加载…" inView:self.view];
+    __weak typeof(self) weakSelf = self;
+    BOOL isArtist = indexPath.section == 3;
+    if (isArtist) {
+        if (![provider respondsToSelector:@selector(getArtistTracks:completion:)]) {
+            [FETheme showToast:@"该音源暂不支持歌手详情" inView:self.view];
+            return;
+        }
+        [(id<FEProviderProtocol>)provider getArtistTracks:item completion:^(NSArray<FETrack *> *tracks, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf showTracks:tracks title:item.name provider:provider]; });
+        }];
+    } else {
+        [provider getPlaylistTracks:item completion:^(NSArray<FETrack *> *tracks, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{ [weakSelf showTracks:tracks title:item.name provider:provider]; });
+        }];
+    }
+}
+
+- (void)showTracks:(NSArray<FETrack *> *)tracks title:(NSString *)title provider:(id<FEProviderProtocol>)provider {
+    if (tracks.count == 0) {
+        [FETheme showToast:@"暂时取不到内容" inView:self.view];
+        return;
+    }
+    FETrackListViewController *vc = [[FETrackListViewController alloc] initWithTitle:title tracks:tracks];
+    vc.listSubtitle = [NSString stringWithFormat:@"%@ · %lu 首", provider.providerName, (unsigned long)tracks.count];
+    [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {

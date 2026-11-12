@@ -297,6 +297,97 @@ static NSString *FEQQDecodeEntities(NSString *text) {
     }];
 }
 
+#pragma mark - 分类搜索（专辑 / 歌手）
+
+- (void)fe_searchType:(NSInteger)type keyword:(NSString *)keyword
+           completion:(void (^)(NSDictionary *json))completion {
+    if (keyword.length == 0) {
+        if (completion) completion(nil);
+        return;
+    }
+    NSString *url = [NSString stringWithFormat:
+        @"https://c.y.qq.com/soso/fcgi-bin/client_search_cp?format=json&p=1&n=30&cr=1&g_tk=5381&t=%ld&w=%@",
+        (long)type, [FEHttpRequest urlEncode:keyword]];
+    [FEHttpRequest GET:url headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        if (completion) completion([self fe_jsonFromData:data]);
+    }];
+}
+
+- (void)searchAlbumsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *albums, NSError *error))completion {
+    [self fe_searchType:3 keyword:keyword completion:^(NSDictionary *json) {
+        NSArray *list = FEQQObject(FEQQObject(FEQQObject(json, @"data"), @"album"), @"list");
+        NSMutableArray *albums = [NSMutableArray array];
+        if ([list isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in list) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                NSString *albumMid = FEQQString(item[@"albumMid"]) ?: FEQQString(item[@"albummid"]);
+                if (albumMid.length == 0) continue;
+                FEPlaylist *album = [[FEPlaylist alloc] init];
+                album.playlistId = albumMid;
+                NSString *name = FEQQString(item[@"albumName"]) ?: FEQQString(item[@"albumname"]) ?: @"";
+                NSString *singer = FEQQString(item[@"singerName"]) ?: @"";
+                album.name = singer.length > 0 ? [NSString stringWithFormat:@"%@ - %@", singer, name] : name;
+                album.coverUrl = [NSString stringWithFormat:@"https://y.qq.com/music/photo_new/T002R300x300M000%@.jpg", albumMid];
+                album.providerId = @"qq";
+                album.resourceType = @"album";
+                album.isLocal = NO;
+                [albums addObject:album];
+            }
+        }
+        if (completion) completion(albums, nil);
+    }];
+}
+
+- (void)searchArtistsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *artists, NSError *error))completion {
+    [self fe_searchType:2 keyword:keyword completion:^(NSDictionary *json) {
+        NSArray *list = FEQQObject(FEQQObject(FEQQObject(json, @"data"), @"singer"), @"list");
+        NSMutableArray *artists = [NSMutableArray array];
+        if ([list isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in list) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                NSString *mid = FEQQString(item[@"singerMid"]) ?: FEQQString(item[@"singermid"]);
+                if (mid.length == 0) continue;
+                FEPlaylist *artist = [[FEPlaylist alloc] init];
+                artist.playlistId = mid;
+                artist.name = FEQQString(item[@"singerName"]) ?: FEQQString(item[@"singername"]) ?: @"";
+                NSString *pic = FEQQString(item[@"singerPic"]) ?: FEQQString(item[@"singer_pic"]);
+                if (pic.length > 0) {
+                    if ([pic hasPrefix:@"//"]) pic = [@"https:" stringByAppendingString:pic];
+                    artist.coverUrl = pic;
+                }
+                artist.providerId = @"qq";
+                artist.resourceType = @"artist";
+                artist.isLocal = NO;
+                [artists addObject:artist];
+            }
+        }
+        if (completion) completion(artists, nil);
+    }];
+}
+
+- (void)getArtistTracks:(FEPlaylist *)artist completion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion {
+    if (artist.playlistId.length == 0) {
+        if (completion) completion(@[], nil);
+        return;
+    }
+    NSString *url = [NSString stringWithFormat:
+        @"https://c.y.qq.com/v8/fcg-bin/fcg_v8_singer_track_cp.fcg?singermid=%@&begin=0&num=30&order=listen&format=json&g_tk=5381",
+        artist.playlistId];
+    [FEHttpRequest GET:url headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSMutableArray *tracks = [NSMutableArray array];
+        id json = [self fe_jsonFromData:data];
+        NSArray *list = FEQQObject(FEQQObject(json, @"data"), @"list");
+        if ([list isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in list) {
+                NSDictionary *song = [item isKindOfClass:[NSDictionary class]] ? item[@"song"] : nil;
+                FETrack *track = [self fe_trackFromSong:song];
+                if (track) [tracks addObject:track];
+            }
+        }
+        if (completion) completion(tracks, tracks.count > 0 ? nil : error);
+    }];
+}
+
 #pragma mark - User playlists
 
 - (void)getUserPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion {
@@ -323,6 +414,27 @@ static NSString *FEQQDecodeEntities(NSString *text) {
 - (void)getPlaylistTracks:(FEPlaylist *)playlist completion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion {
     if (playlist.playlistId.length == 0) {
         if (completion) completion(@[], nil);
+        return;
+    }
+    if ([playlist.resourceType isEqualToString:@"album"]) {
+        NSString *albumURL = [NSString stringWithFormat:
+            @"https://c.y.qq.com/v8/fcg-bin/fcg_v8_album_info_cp.fcg?albummid=%@&format=json&g_tk=5381",
+            playlist.playlistId];
+        [FEHttpRequest GET:albumURL headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+            NSMutableArray *tracks = [NSMutableArray array];
+            id json = [self fe_jsonFromData:data];
+            NSArray *songs = FEQQObject(FEQQObject(json, @"data"), @"list");
+            if ([songs isKindOfClass:[NSArray class]]) {
+                for (NSDictionary *item in songs) {
+                    FETrack *track = [self fe_trackFromSong:item];
+                    if (track) {
+                        track.album = playlist.name;
+                        [tracks addObject:track];
+                    }
+                }
+            }
+            if (completion) completion(tracks, tracks.count > 0 ? nil : error);
+        }];
         return;
     }
     NSString *url = [NSString stringWithFormat:@"https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&new_format=1&disstid=%@&g_tk=5381&loginUin=0&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0",

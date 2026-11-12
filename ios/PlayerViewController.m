@@ -9,12 +9,15 @@
 #import "FEFavoriteManager.h"
 #import "FECurrentPlaylistViewController.h"
 #import "FESettings.h"
+#import <math.h>
 
 @interface PlayerViewController ()
 
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) FEGradientView *backgroundView;
 @property (nonatomic, strong) FECoverView *coverView;
+@property (nonatomic, strong) UIView *vinylRing;
+@property (nonatomic, strong) UIView *vinylCenter;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *artistLabel;
 @property (nonatomic, strong) UILabel *lyricLabel;
@@ -35,8 +38,9 @@
 @property (nonatomic, strong) UILabel *lyricsLabel;
 @property (nonatomic, strong) UILabel *lyricsHint;
 @property (nonatomic, assign) BOOL showingLyrics;
+@property (nonatomic, assign) BOOL landscapeLayout;
 @property (nonatomic, assign) NSInteger renderedLyricCount;
-@property (nonatomic, assign) CGFloat controlsRowY;
+@property (nonatomic, assign) CGFloat lastLyricScrollOffset;
 
 @end
 
@@ -85,12 +89,28 @@
     [self.coverView setCornerRadius:22];
     self.coverView.layer.shadowColor = [UIColor blackColor].CGColor;
     self.coverView.layer.shadowOpacity = 0.5;
-    self.coverView.layer.shadowRadius = 24;
-    self.coverView.layer.shadowOffset = CGSizeMake(0, 14);
+    self.coverView.layer.shadowRadius = 22;
+    self.coverView.layer.shadowOffset = CGSizeMake(0, 12);
     self.coverView.layer.masksToBounds = NO;
     self.coverView.imageView.layer.cornerRadius = 22;
     self.coverView.imageView.layer.masksToBounds = YES;
     [self.scrollView addSubview:self.coverView];
+
+    self.vinylRing = [[UIView alloc] initWithFrame:CGRectZero];
+    self.vinylRing.backgroundColor = [UIColor clearColor];
+    self.vinylRing.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.28].CGColor;
+    self.vinylRing.layer.borderWidth = 2;
+    self.vinylRing.userInteractionEnabled = NO;
+    self.vinylRing.hidden = YES;
+    [self.coverView addSubview:self.vinylRing];
+
+    self.vinylCenter = [[UIView alloc] initWithFrame:CGRectZero];
+    self.vinylCenter.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.9];
+    self.vinylCenter.layer.borderColor = [[UIColor blackColor] colorWithAlphaComponent:0.25].CGColor;
+    self.vinylCenter.layer.borderWidth = 3;
+    self.vinylCenter.userInteractionEnabled = NO;
+    self.vinylCenter.hidden = YES;
+    [self.coverView addSubview:self.vinylCenter];
 
     self.titleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
@@ -128,7 +148,6 @@
     self.timeLabel.text = @"00:00 / 00:00";
     [self.scrollView addSubview:self.timeLabel];
 
-    // 收藏 / 上一首 / 播放 / 下一首 / 播放列表 同一排
     self.favoriteButton = [UIButton buttonWithType:UIButtonTypeCustom];
     [self.favoriteButton setImage:[FEIconView imageWithType:FEIconTypeHeart size:CGSizeMake(20, 20) color:[[UIColor whiteColor] colorWithAlphaComponent:0.7]] forState:UIControlStateNormal];
     [self.favoriteButton addTarget:self action:@selector(favoriteTapped) forControlEvents:UIControlEventTouchUpInside];
@@ -216,6 +235,7 @@
     self.scrollView.frame = self.view.bounds;
 
     BOOL landscape = size.width > size.height;
+    self.landscapeLayout = landscape;
     CGFloat width = size.width;
     CGFloat height = size.height;
 
@@ -224,27 +244,26 @@
     self.sourceLabel.frame = CGRectMake((width - 100) / 2, landscape ? 14 : 24, 100, 24);
 
     if (landscape) {
-        CGFloat coverSide = MIN(height - 96, 210);
-        CGFloat coverX = 22;
-        CGFloat coverY = MAX(52, (height - coverSide) / 2 - 6);
+        CGFloat coverSide = MIN(height - 108, 200);
+        CGFloat coverX = 24;
+        CGFloat coverY = MAX(52, (height - coverSide) / 2 - 4);
         self.coverView.frame = CGRectMake(coverX, coverY, coverSide, coverSide);
 
-        CGFloat rightX = coverX + coverSide + 22;
-        CGFloat rightWidth = width - rightX - 18;
-        self.titleLabel.frame = CGRectMake(rightX, 42, rightWidth, 24);
-        self.artistLabel.frame = CGRectMake(rightX, 68, rightWidth, 18);
-        self.lyricLabel.frame = CGRectMake(rightX, 90, rightWidth, 32);
+        CGFloat rightX = coverX + coverSide + 20;
+        CGFloat rightWidth = width - rightX - 16;
+
+        self.titleLabel.frame = CGRectMake(rightX, 44, rightWidth, 24);
+        self.artistLabel.frame = CGRectMake(rightX, 69, rightWidth, 18);
+        self.lyricLabel.frame = CGRectMake(rightX, 90, rightWidth, 34);
 
         self.progressSlider.frame = CGRectMake(rightX, 138, rightWidth, 24);
         self.timeLabel.frame = CGRectMake(rightX, 164, rightWidth, 14);
 
         CGFloat rowY = MIN(190, height - 118);
-        self.controlsRowY = rowY;
         [self layoutControlRowWithCenterX:rightX + rightWidth / 2 y:rowY compact:YES];
 
-        CGFloat contentBottom = rowY + 64;
-        self.lyricsPage.frame = CGRectMake(16, 50, width - 32, MAX(80, rowY - 58));
-        self.scrollView.contentSize = CGSizeMake(width, MAX(height, contentBottom));
+        self.lyricsPage.frame = CGRectMake(16, 46, width - 32, MAX(90, rowY - 54));
+        self.scrollView.contentSize = CGSizeMake(width, MAX(height, rowY + 64));
     } else {
         CGFloat safeHeight = height > 0 ? height : 480;
         CGFloat coverSide = MIN(width - 130, safeHeight - 300);
@@ -261,17 +280,15 @@
         self.timeLabel.frame = CGRectMake(28, y + 106, width - 56, 14);
 
         CGFloat rowY = y + 124;
-        self.controlsRowY = rowY;
         [self layoutControlRowWithCenterX:width / 2 y:rowY compact:NO];
 
-        CGFloat contentBottom = rowY + 70;
-        self.lyricsPage.frame = CGRectMake(12, 52, width - 24, MAX(80, (y + 78) - 52 - 6));
-        self.scrollView.contentSize = CGSizeMake(width, MAX(height, contentBottom));
+        self.lyricsPage.frame = CGRectMake(12, 52, width - 24, MAX(90, (y + 78) - 58));
+        self.scrollView.contentSize = CGSizeMake(width, MAX(height, rowY + 70));
     }
 
-    self.lyricsHint.frame = CGRectMake(0, 8, self.lyricsPage.bounds.size.width, 16);
-    self.lyricsScroll.frame = CGRectMake(0, 28, self.lyricsPage.bounds.size.width, MAX(40, self.lyricsPage.bounds.size.height - 34));
-    [self layoutLyricsText];
+    [self applyCoverShapeForLandscape:landscape];
+    [self layoutLyricsPageContents];
+    [self updateRotationState];
 }
 
 - (void)layoutControlRowWithCenterX:(CGFloat)centerX y:(CGFloat)y compact:(BOOL)compact {
@@ -295,6 +312,39 @@
     self.playlistButton.frame = CGRectMake(x, y + (play - small) / 2, small, small);
 }
 
+- (void)applyCoverShapeForLandscape:(BOOL)landscape {
+    CGFloat side = self.coverView.bounds.size.width;
+    if (side <= 1) return;
+
+    if (landscape) {
+        self.coverView.layer.cornerRadius = side / 2;
+        self.coverView.imageView.layer.cornerRadius = side / 2;
+        self.coverView.layer.shadowOpacity = 0.38;
+        self.coverView.layer.shadowPath = [UIBezierPath bezierPathWithOvalInRect:self.coverView.bounds].CGPath;
+        self.vinylRing.hidden = NO;
+        self.vinylCenter.hidden = NO;
+
+        self.vinylRing.frame = CGRectMake(6, 6, side - 12, side - 12);
+        self.vinylRing.layer.cornerRadius = (side - 12) / 2;
+        self.vinylCenter.frame = CGRectMake((side - 22) / 2, (side - 22) / 2, 22, 22);
+        self.vinylCenter.layer.cornerRadius = 11;
+    } else {
+        self.coverView.layer.cornerRadius = 22;
+        self.coverView.imageView.layer.cornerRadius = 22;
+        self.coverView.layer.shadowOpacity = 0.5;
+        self.coverView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.coverView.bounds cornerRadius:22].CGPath;
+        self.vinylRing.hidden = YES;
+        self.vinylCenter.hidden = YES;
+        [self.coverView.layer removeAnimationForKey:@"vinylSpin"];
+    }
+}
+
+- (void)layoutLyricsPageContents {
+    self.lyricsHint.frame = CGRectMake(0, 8, self.lyricsPage.bounds.size.width, 16);
+    self.lyricsScroll.frame = CGRectMake(0, 28, self.lyricsPage.bounds.size.width, MAX(40, self.lyricsPage.bounds.size.height - 34));
+    [self layoutLyricsText];
+}
+
 #pragma mark - Lyrics / Cover switch
 
 - (void)swipeLeft:(UISwipeGestureRecognizer *)gesture {
@@ -308,12 +358,20 @@
 - (void)showLyrics:(BOOL)show {
     if (self.showingLyrics == show) return;
     self.showingLyrics = show;
+
     self.coverView.hidden = show;
     self.titleLabel.hidden = show;
     self.artistLabel.hidden = show;
     self.lyricLabel.hidden = show;
+    self.progressSlider.hidden = show && self.landscapeLayout;
+    self.timeLabel.hidden = show && self.landscapeLayout;
     self.lyricsPage.hidden = !show;
-    if (show) [self layoutLyricsText];
+
+    if (show) {
+        [self layoutLyricsPageContents];
+        [self scrollLyricsToCurrentLine:NO];
+    }
+    [self updateRotationState];
 }
 
 - (void)layoutLyricsText {
@@ -324,23 +382,49 @@
     }
     NSString *text = texts.count > 0 ? [texts componentsJoinedByString:@"\n"] : @"暂无歌词";
     self.lyricsLabel.text = text;
+    self.lyricsLabel.font = [UIFont systemFontOfSize:self.landscapeLayout ? 14 : 13];
 
-    CGFloat width = MAX(60, self.lyricsScroll.bounds.size.width - 20);
+    CGFloat width = MAX(60, self.lyricsScroll.bounds.size.width - 24);
     CGSize fit = [text boundingRectWithSize:CGSizeMake(width, MAXFLOAT)
                                     options:NSStringDrawingUsesLineFragmentOrigin
                                  attributes:@{NSFontAttributeName: self.lyricsLabel.font}
                                     context:nil].size;
-    self.lyricsLabel.frame = CGRectMake(10, 8, width, ceil(fit.height) + 8);
-    self.lyricsScroll.contentSize = CGSizeMake(self.lyricsScroll.bounds.size.width, self.lyricsLabel.frame.size.height + 16);
-
-    NSInteger current = [FELyricsManager sharedManager].currentIndex;
-    if (current >= 0 && current < (NSInteger)texts.count) {
-        CGFloat lineHeight = self.lyricsLabel.font.lineHeight;
-        CGFloat offset = current * lineHeight - self.lyricsScroll.bounds.size.height / 2;
-        offset = MAX(0, MIN(offset, MAX(0, self.lyricsScroll.contentSize.height - self.lyricsScroll.bounds.size.height)));
-        [self.lyricsScroll setContentOffset:CGPointMake(0, offset) animated:NO];
-    }
+    self.lyricsLabel.frame = CGRectMake(12, 10, width, ceil(fit.height) + 10);
+    self.lyricsScroll.contentSize = CGSizeMake(self.lyricsScroll.bounds.size.width, self.lyricsLabel.frame.size.height + 20);
     self.renderedLyricCount = (NSInteger)lines.count;
+    self.lastLyricScrollOffset = -1;
+}
+
+- (void)scrollLyricsToCurrentLine:(BOOL)animated {
+    NSInteger index = [FELyricsManager sharedManager].currentIndex;
+    if (index < 0) return;
+    CGFloat lineHeight = self.lyricsLabel.font.lineHeight;
+    CGFloat offset = index * lineHeight + 10 - self.lyricsScroll.bounds.size.height / 2 + lineHeight / 2;
+    CGFloat maxOffset = MAX(0, self.lyricsScroll.contentSize.height - self.lyricsScroll.bounds.size.height);
+    offset = MAX(0, MIN(offset, maxOffset));
+    if (fabs(offset - self.lastLyricScrollOffset) < 4) return;
+    self.lastLyricScrollOffset = offset;
+    [self.lyricsScroll setContentOffset:CGPointMake(0, offset) animated:animated];
+}
+
+#pragma mark - Vinyl rotation
+
+- (void)updateRotationState {
+    BOOL shouldSpin = self.landscapeLayout && [FEPlayerManager sharedManager].isPlaying && !self.showingLyrics;
+    CALayer *layer = self.coverView.layer;
+    if (shouldSpin) {
+        if ([layer animationForKey:@"vinylSpin"] == nil) {
+            CABasicAnimation *spin = [CABasicAnimation animationWithKeyPath:@"transform.rotation.z"];
+            spin.fromValue = @0;
+            spin.toValue = @(M_PI * 2);
+            spin.duration = 18.0;
+            spin.repeatCount = HUGE_VALF;
+            spin.removedOnCompletion = NO;
+            [layer addAnimation:spin forKey:@"vinylSpin"];
+        }
+    } else {
+        [layer removeAnimationForKey:@"vinylSpin"];
+    }
 }
 
 #pragma mark - Rotation
@@ -381,8 +465,6 @@
     FEPlayerManager *manager = [FEPlayerManager sharedManager];
     FETrack *track = manager.currentTrack;
     self.titleLabel.text = track.title ?: @"未知歌曲";
-    self.artistLabel.text = track.artist ?: @"未知艺术家";
-    [self.coverView setImageURL:track.coverUrl];
 
     NSString *sourceName = @"本地音乐";
     for (id<FEProviderProtocol> provider in [FEProviderManager sharedManager].providers) {
@@ -391,8 +473,11 @@
             break;
         }
     }
+    NSString *artist = track.artist.length > 0 ? track.artist : @"未知艺术家";
+    self.artistLabel.text = [NSString stringWithFormat:@"%@ · %@", artist, sourceName];
     self.sourceLabel.text = sourceName;
 
+    [self.coverView setImageURL:track.coverUrl];
     [self refreshQualityButton];
     [self updateFavoriteButton];
 
@@ -401,7 +486,6 @@
         self.lyricLabel.text = @"暂无歌词";
     }
     [self updateTimeWithCurrent:manager.currentTime duration:manager.duration];
-    [self layoutLyricsText];
 }
 
 - (void)updateFavoriteButton {
@@ -437,6 +521,7 @@
         if (count != self.renderedLyricCount) {
             [self layoutLyricsText];
         }
+        [self scrollLyricsToCurrentLine:NO];
     }
 }
 
@@ -452,10 +537,12 @@
 - (void)handleTrackChanged:(NSNotification *)notification {
     self.renderedLyricCount = -1;
     [self updateUI];
+    [self updateRotationState];
 }
 
 - (void)handleStateChanged:(NSNotification *)notification {
     [self updatePlayIcon:[FEPlayerManager sharedManager].isPlaying];
+    [self updateRotationState];
 }
 
 - (void)handleTimeUpdated:(NSNotification *)notification {

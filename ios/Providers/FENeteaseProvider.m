@@ -342,6 +342,100 @@ static NSString *FEString(id value) {
     }];
 }
 
+#pragma mark - 分类搜索
+
+- (void)fe_searchType:(NSInteger)type keyword:(NSString *)keyword
+           completion:(void (^)(NSDictionary *json))completion {
+    if (keyword.length == 0) {
+        if (completion) completion(nil);
+        return;
+    }
+    NSDictionary *parameters = @{@"s": keyword, @"type": [NSString stringWithFormat:@"%ld", (long)type],
+                                 @"offset": @"0", @"total": @"true", @"limit": @"30"};
+    [FEHttpRequest POSTForm:@"https://music.163.com/api/search/get/web"
+                   headers:[self fe_headers]
+                parameters:parameters
+                completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        if (completion) completion([self fe_jsonFromData:data]);
+    }];
+}
+
+- (void)searchPlaylistsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion {
+    [self fe_searchType:1000 keyword:keyword completion:^(NSDictionary *json) {
+        NSArray *items = FEDictObject(FEDictObject(json, @"result"), @"playlists");
+        NSMutableArray *playlists = [NSMutableArray array];
+        if ([items isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in items) {
+                FEPlaylist *playlist = [self fe_playlistFromDict:item];
+                if (playlist) {
+                    playlist.resourceType = @"playlist";
+                    [playlists addObject:playlist];
+                }
+            }
+        }
+        if (completion) completion(playlists, nil);
+    }];
+}
+
+- (void)searchAlbumsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *albums, NSError *error))completion {
+    [self fe_searchType:10 keyword:keyword completion:^(NSDictionary *json) {
+        NSArray *items = FEDictObject(FEDictObject(json, @"result"), @"albums");
+        NSMutableArray *albums = [NSMutableArray array];
+        if ([items isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in items) {
+                FEPlaylist *album = [self fe_playlistFromDict:item];
+                if (album) {
+                    album.resourceType = @"album";
+                    album.coverUrl = FEString(FEDictObject(item, @"picUrl")) ?: album.coverUrl;
+                    NSDictionary *artist = FEDictObject(item, @"artist");
+                    if ([artist isKindOfClass:[NSDictionary class]]) {
+                        album.name = [NSString stringWithFormat:@"%@ - %@", FEString(FEDictObject(artist, @"name")) ?: @"", album.name ?: @""];
+                    }
+                    [albums addObject:album];
+                }
+            }
+        }
+        if (completion) completion(albums, nil);
+    }];
+}
+
+- (void)searchArtistsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *artists, NSError *error))completion {
+    [self fe_searchType:100 keyword:keyword completion:^(NSDictionary *json) {
+        NSArray *items = FEDictObject(FEDictObject(json, @"result"), @"artists");
+        NSMutableArray *artists = [NSMutableArray array];
+        if ([items isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in items) {
+                if (![item isKindOfClass:[NSDictionary class]]) continue;
+                FEPlaylist *artist = [[FEPlaylist alloc] init];
+                id artistId = item[@"id"];
+                artist.playlistId = [artistId isKindOfClass:[NSNumber class]] ? [artistId stringValue] : ([artistId isKindOfClass:[NSString class]] ? artistId : @"");
+                if (artist.playlistId.length == 0) continue;
+                artist.name = FEString(FEDictObject(item, @"name")) ?: @"";
+                artist.coverUrl = FEString(FEDictObject(item, @"img1v1Url")) ?: FEString(FEDictObject(item, @"picUrl")) ?: @"";
+                artist.providerId = @"netease";
+                artist.resourceType = @"artist";
+                artist.isLocal = NO;
+                [artists addObject:artist];
+            }
+        }
+        if (completion) completion(artists, nil);
+    }];
+}
+
+- (void)getArtistTracks:(FEPlaylist *)artist completion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion {
+    if (artist.playlistId.length == 0) {
+        if (completion) completion(@[], nil);
+        return;
+    }
+    NSString *url = [NSString stringWithFormat:@"https://music.163.com/api/artist/%@", artist.playlistId];
+    [FEHttpRequest GET:url headers:[self fe_headers] completion:^(NSData *data, NSHTTPURLResponse *response, NSError *error) {
+        NSDictionary *json = [self fe_jsonFromData:data];
+        NSArray *songs = FEDictObject(json, @"hotSongs");
+        NSArray *tracks = [self fe_tracksFromSongs:songs];
+        if (completion) completion(tracks, tracks.count > 0 ? nil : error);
+    }];
+}
+
 #pragma mark - User playlists / playlist detail
 
 - (void)getUserPlaylistsWithCompletion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion {

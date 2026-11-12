@@ -27,6 +27,13 @@
 - (void)likeTrack:(FETrack *)track like:(BOOL)like completion:(void (^)(BOOL success, NSError *error))completion;
 - (void)getLikedSongsWithCompletion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
 
+#pragma mark - 分类搜索（歌单 / 专辑 / 歌手）
+
+- (void)searchPlaylistsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *playlists, NSError *error))completion;
+- (void)searchAlbumsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *albums, NSError *error))completion;
+- (void)searchArtistsWithKeyword:(NSString *)keyword completion:(void (^)(NSArray<FEPlaylist *> *artists, NSError *error))completion;
+- (void)getArtistTracks:(FEPlaylist *)artist completion:(void (^)(NSArray<FETrack *> *tracks, NSError *error))completion;
+
 /// 登录用户资料（昵称 + 头像），用于“我的”页头像同步
 - (void)getUserProfileWithCompletion:(void (^)(NSString *nickname, NSString *avatarURL, NSError *error))completion;
 
