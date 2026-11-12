@@ -12,6 +12,7 @@ FuoEvolve9_USE_MODULES = 0
 USE_MODULES = 0
 FuoEvolve9_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-error=deprecated-module-dot-map -I. -IModels -IProviders -IPlayer -ILyrics -IPlaylist -ILogin -ILocalMusic -IUtils -IUI
 FuoEvolve9_INFOPLIST = $(THEOS_PROJECT_DIR)/Info.plist
+FuoEvolve9_RESOURCE_DIRS = icons
 FuoEvolve9_LDFLAGS = -Wl,-undefined,dynamic_lookup
 
 include $(THEOS_MAKE_PATH)/application.mk
