@@ -52,6 +52,9 @@ ARCHS：armv7
 | 播放记忆（歌曲 + 队列 + 进度，启动后续播） | 已完成（代码） |
 | 优先音质（标准 / 高清 / 无损，网易云 + QQ 支持降级） | 已完成（代码） |
 | 多音源并行搜索（按来源分组、带封面） | 已完成（代码） |
+| 搜索四类：歌曲 / 歌单 / 专辑 / 歌手，跨音源合并按匹配度排序 | 已完成（代码） |
+| 播放页：歌词跟随进度滚动、横屏全宽歌词、黑胶唱片旋转 | 已完成（代码） |
+| 当前播放列表：返回 / 编辑 / 左滑删除 / 点歌切歌 | 已完成（代码） |
 | 推荐页按登录音源分区（网易云 / QQ） | 已完成（代码） |
 | 播放页左右滑动切换封面 / 全屏歌词 | 已完成（代码） |
 
@@ -60,7 +63,7 @@ ARCHS：armv7
 > 注意：上表“已完成”指源码已写入、通过静态检查，并已由 GitHub Actions（macos-15 + Theos）成功交叉编译为 armv7 IPA；
 > **尚未在 iPhone 4S 真机上安装运行**（见第 6 节）。
 
-## 4. 本轮改动要点（1.3.0 → 1.3.1）
+## 4. 本轮改动要点（1.3.0 → 1.3.2）
 
 ### 4.0 设置、主题与横屏
 
@@ -150,16 +153,30 @@ B 站   x/web-interface/search/type             code=0 results=3
 | 多音源搜索 | 并发搜索所有「使用中」音源，按音源分组显示结果数量与封面，点任意结果从该音源列表起播 |
 | 推荐分区 | 推荐页按已登录音源生成独立分区（网易云 / QQ），都登录则两块；QQ 新增推荐歌单与热歌/新歌榜接口；未登录时用网易云公开推荐兜底 |
 
+### 4.5 1.3.2 改动
+
+| 项目 | 实现 |
+|---|---|
+| 仓库更名 | GitHub `Daniel123999/D9Music`、Gitee `jyz2574461147/D9Music`；应用内更新源、README/报告链接、本地 remote 全部同步 |
+| 歌词滚动 | 播放时间回调按当前歌词行计算偏移，变化超过 4px 才滚动，避免抖动；切页/换歌重置偏移 |
+| 横屏布局 | 横屏歌词页改为全宽（隐藏封面与右侧信息），歌词模式隐藏进度条与时间，控制键保持底部；旋转时重新计算可见性 |
+| 黑胶唱片 | 横屏封面圆形裁切 + 描边圈 + 中心轴，播放中 18 秒/圈旋转；暂停或进入歌词模式停止；竖屏保持直角圆角封面 |
+| 播放列表弹层 | 新增「‹ 返回」、编辑模式与左滑删除；保留清空；顶部提示「点歌切歌 / 左滑删除」 |
+| 音源显示 | 歌手行改为 `歌手 · 音源`，顶部音源胶囊保留 |
+| 搜索分类 | 歌曲 / 歌单 / 专辑 / 歌手四类并发搜索；跨音源合并、按匹配度排序（完全 > 前缀 > 包含 > 歌手包含）；分类分段展示 |
+| 搜索性能 | 搜索条不再使用阴影；图片缩至 360px、并发下载限制 2、内存缓存下调至 12MB/80 张；取消图片淡入动画；搜索 25 秒兜底避免一直转圈 |
+| 接口补齐 | 网易云：歌单/专辑/歌手搜索、歌手热歌；QQ：专辑/歌手搜索、专辑曲目、歌手曲目 |
+
 ## 5. 构建与验证证据
 
 ### 5.1 包级验证
 
-**当前版本 1.3.1 build 6**（GitHub Actions run `43242463347`，commit `426d6b7`）：
+**当前版本 1.3.2 build 7**（GitHub Actions run `43248362819`，commit `49b997b`）：
 
 ```text
-IPA: artifacts/verified-ipas/D9Music-v1.3.1-build6-armv7.ipa
-size=237316 sha256=B848D5CD9C11EB16AAD927B0A8B24A81AEA787A6C2E7E27C593D352428DC3D2F
-bundle=com.d9music.app version=1.3.1 build=6 minOS=9.0
+IPA: artifacts/verified-ipas/D9Music-v1.3.2-build7-armv7.ipa
+size=251234 sha256=5BD2CD933C9737AE9B9845322D9E887CCFB00CFD5842FDFB894607BF7DB15D8C
+bundle=com.d9music.app version=1.3.2 build=7 minOS=9.0
 architectures=armv7 (cpu=12, subtype=9)
 Mach-O magic=0xfeedface
 bundle 内含图标 PNG=11（Icon / Icon@2x / Icon-60 / Icon-60@2x / Icon-60@3x /
@@ -168,7 +185,15 @@ Release 附件 D9Music.ipa 下载 SHA256 一致
 RESULT: OK
 ```
 
-历史版本 1.2.0 build 4（上一版，仅供对照）：
+历史版本 1.3.1 build 6（仅供对照）：
+
+```text
+IPA: 237316 B sha256=B848D5CD9C11EB16AAD927B0A8B24A81AEA787A6C2E7E27C593D352428DC3D2F
+bundle=com.d9music.app version=1.3.1 build=6 minOS=9.0
+RESULT: OK
+```
+
+历史版本 1.2.0 build 4（仅供对照）：
 
 ```text
 IPA: artifacts/verified-ipas/FuoEvolve9-v1.2.0-build4-armv7.ipa
@@ -184,8 +209,9 @@ RESULT: OK
 
 | 平台 | Release | 附件 | 公开下载校验 |
 |---|---|---|---|
-| GitHub | v1.3.1 | `D9Music.ipa` 237316 B | **通过**，下载 SHA256 = `B848D5CD…` 与本地构建一致 |
-| Gitee | v1.3.1 (id 1302647) | `D9Music.ipa` 237316 B | 已上传；本机请求被 Gitee WAF 403，**未完成公开下载校验** |
+| GitHub | v1.3.2 | `D9Music.ipa` 251234 B | **通过**，下载 SHA256 = `5BD2CD93…` 与本地构建一致 |
+| Gitee | v1.3.2 (id 1302822) | `D9Music.ipa` 251234 B | 已上传；本机请求被 Gitee WAF 403，**未完成公开下载校验** |
+| GitHub | v1.3.1 | `D9Music.ipa` 237316 B | 历史版本，已校验 |
 | GitHub | v1.0.0 (id 438835569) | `FuoEvolve9.ipa` 52293 B | 历史版本，已校验 |
 | Gitee | v1.0.0 (id 1290189) | `FuoEvolve9.ipa` | 历史版本，未完成公开下载校验 |
 
@@ -199,9 +225,9 @@ RESULT: OK
 |---|---|
 | 代码托管 | GitHub `Daniel123999/D9Music`（主）+ Gitee `jyz2574461147/D9Music`（镜像） |
 | CI | GitHub Actions，`runs-on: macos-15`，Theos + `iPhoneOS9.3.sdk`，`TARGET=iphone:clang:9.3:9.0` |
-| 本次成功（1.3.1） | run `43242463347`，commit `426d6b7`，产物 `D9Music-ipa` 233250 B（解包后 IPA 237316 B） |
-| 产物归档 | `artifacts/verified-ipas/D9Music-v1.3.1-build6-armv7.ipa`、`local-ipas/D9Music-latest-armv7.ipa` |
-| 上一次成功（1.3.0） | run `43234133270`，commit `0968460`，`D9Music-v1.3.0-build5-armv7.ipa` |
+| 本次成功（1.3.2） | run `43248362819`，commit `49b997b`，产物 `D9Music-ipa` 247154 B（解包后 IPA 251234 B） |
+| 产物归档 | `artifacts/verified-ipas/D9Music-v1.3.2-build7-armv7.ipa`、`local-ipas/D9Music-latest-armv7.ipa` |
+| 上一次成功（1.3.1） | run `43242463347`，commit `426d6b7`，237316 B |
 
 构建过程中真实遇到并修复的两个问题：
 
@@ -218,15 +244,16 @@ RESULT: OK
 
 ## 6. 未验证事项（必须明确）
 
-1. **1.3.1 build 6 已成功编译**（armv7、包含图标），但**从未在 iPhone 4S 真机上安装/启动** ——
-   启动崩溃、应用内更新安装流程、缓存命中去重、播放记忆续播、音质切换、滑动歌词、多音源搜索与分区推荐均未经过运行时验证。
+1. **1.3.2 build 7 已成功编译**（armv7、包含图标），但**从未在 iPhone 4S 真机上安装/启动** ——
+   启动崩溃、更新安装流程、缓存命中、播放记忆续播、音质切换、歌词自动滚动、黑胶旋转、搜索分类与性能表现均未经过运行时验证。
 2. 构建机为 GitHub Actions 的 macOS runner（clang + Theos），与本机 `-Werror` 静态检查（40 个 `.m`）一致，但静态检查不能替代真机运行。
 3. Gitee 公开下载未从本机成功获取（403），仅 GitHub 侧下载校验通过。
 4. VIP/版权歌曲仍无法播放（服务端 `url:null`），仅能自动切换音源兜底；无损音质同样受账号权限限制。
+5. 搜索的「匹配度」为客户端简单打分（完全匹配/前缀/包含/歌手包含），不是服务端排序。
 
 ## 7. 下一步最小动作
 
 1. 把 `local-ipas/D9Music-latest-armv7.ipa` 装到已越狱 + AppSync Unified 的 4S 上，
-   实测：启动 → 搜索（多音源）→ 播放/缓存/记忆续播 → 音质切换 → 滑动歌词 → 设置中各开关 → 云盘下载 → 检查更新。
+   实测：启动 → 搜索（四类结果/匹配度）→ 播放/缓存/记忆续播 → 音质切换 → 歌词滚动与黑胶 → 播放列表删除 → 云盘下载 → 检查更新。
 2. 依据真机表现修 bug，再走一次 CI 出包并用应用内更新验证覆盖安装。
-3. 视需要补齐云盘上传；再把仓库名从 `FuoEvolve9` 改为 `D9Music`。
+3. 视需要补齐云盘上传。
