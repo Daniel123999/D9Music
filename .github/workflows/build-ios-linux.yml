@@ -22,6 +22,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential clang lld make git curl xz-utils libssl-dev zip unzip python3 fakeroot rsync perl libxml2
           sudo apt-get install -y libtinfo5 || sudo apt-get install -y libncurses5 || true
+          # 预编译工具链按 Ubuntu 20.04 构建，需要 libtinfo.so.5 / libncurses.so.5
+          if ! ldconfig -p | grep -q 'libtinfo\.so\.5'; then
+            T6=$(ldconfig -p | grep 'libtinfo\.so\.6' | head -1 | awk '{print $NF}')
+            [ -n "$T6" ] && sudo ln -sf "$T6" /usr/lib/x86_64-linux-gnu/libtinfo.so.5 || true
+          fi
+          if ! ldconfig -p | grep -q 'libncurses\.so\.5'; then
+            N6=$(ldconfig -p | grep 'libncurses\.so\.6' | head -1 | awk '{print $NF}')
+            [ -n "$N6" ] && sudo ln -sf "$N6" /usr/lib/x86_64-linux-gnu/libncurses.so.5 || true
+          fi
           sudo apt-get install -y ldid || echo "ldid not packaged, will build unsigned"
           sudo tee /usr/local/bin/plutil >/dev/null <<'EOF'
           #!/usr/bin/env bash
