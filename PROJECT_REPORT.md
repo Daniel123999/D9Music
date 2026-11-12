@@ -1,4 +1,4 @@
-# FuoEvolve9 — iOS 9 / iPhone 4S 移植项目报告
+# D9Music（原 FuoEvolve9）— iOS 9 / iPhone 4S 项目报告
 
 ## 1. 项目定位
 
@@ -11,6 +11,9 @@
 ## 2. 目标基线
 
 ```text
+应用名：D9Music
+Bundle ID：com.d9music.app
+版本：1.3.0 (build 5)
 设备/切片：iPhone 4S，armv7（cputype=12, cpusubtype=9）
 最低系统：iOS 9.0
 SDK：iPhoneOS9.3.sdk
@@ -27,8 +30,14 @@ ARCHS：armv7
 | 底部 Tab 导航（推荐/搜索/音乐库/我的）+ 全局迷你播放器 | 已完成（代码） |
 | FuoEvolve 风格卡片式 UI（渐变主色、圆角卡片、代码绘制矢量图标） | 已完成（代码） |
 | 音源切换与手动 Cookie 登录（粘贴 Cookie，非内置网页登录） | 已完成（代码） |
+| 多音源：同时启用、拖动排序优先级、按优先级自动换源 | 已完成（代码） |
 | 网易云搜索/播放地址/歌词/歌单/推荐歌单/新歌/新碟/排行榜/歌单广场 API | 已完成（代码） |
-| 哔哩哔哩搜索/播放地址 API | 已完成（代码） |
+| QQ 音乐搜索/播放地址/歌词/歌单/账号资料 API + Cookie 登录 | 已完成（代码） |
+| 哔哩哔哩搜索/播放地址/账号资料 API | 已完成（代码） |
+| 我的页头像同步（最后登录音源）+ 相册自定义头像 | 已完成（代码） |
+| 夜间模式（深色配色 + 全界面重建） | 已完成（代码） |
+| 横屏播放（480×320 紧凑布局、按钮完整可见） | 已完成（代码） |
+| WebDAV 云盘浏览（PROPFIND 列目录）+ 下载播放 | 已完成（代码） |
 | AVPlayer 播放、上一首/下一首、进度拖动、后台控制 | 已完成（代码） |
 | 播放失败自动切换其他音源 | 已完成（代码） |
 | 本地音乐扫描（MPMediaLibrary） | 已完成（代码） |
@@ -39,10 +48,42 @@ ARCHS：armv7
 | 当前播放列表页（查看/删除/清空队列）、歌单重命名/删除 | 已完成（代码） |
 | 应用图标（紫粉渐变 + 白色音符，11 个尺寸已进包） | 已完成（包内验证） |
 
-未做：QQ 音乐完整 API、YouTube Music、下载、听歌识曲、视频播放、云盘完整逻辑。
+未做：YouTube Music、下载（离线曲库）、听歌识曲、视频播放、云盘上传完整逻辑。
 
-> 注意：上表“已完成”指源码已写入、通过静态检查/接口验证，并已由 GitHub Actions（macos-15 + Theos）成功交叉编译为 armv7 IPA；
+> 注意：上表“已完成”指源码已写入、通过静态检查，并已由 GitHub Actions（macos-15 + Theos）成功交叉编译为 armv7 IPA；
 > **尚未在 iPhone 4S 真机上安装运行**（见第 6 节）。
+
+## 4. 本轮（1.3.0 / build 5）改动要点
+
+### 4.0 设置、主题与横屏
+
+| 问题 | 修复 |
+|---|---|
+| 设置页「关于」分组被底部迷你播放器遮挡 | 表格底部 `contentInset = 120`，所有分组可完整滚动显示 |
+| 保存配置混在列表里 | 移到导航栏右上角 `保存`，与返回按钮同风格 |
+| WebDAV 配置长期展开、占满屏幕 | 默认折叠为一行「WebDAV 云同步」，点开展开；再点「收起」 |
+| 「从云端恢复配置」观感像开关 | 改为居中加粗按钮样式，点击弹二次确认 |
+| 无夜间模式 | 新增 `FESettings` + `FETheme` 深色配色（背景 `#0F1016`、卡片 `#1B1D27`），切换后重建界面 |
+| 播放页固定竖屏布局在 4S 上越界 | 按 320×480 / 480×320 两套布局重排，封面自适应，控件完整可见，支持旋转 |
+
+### 4.1 多音源与 QQ 音乐
+
+- `FEProviderManager` 保存 `providerOrder`（优先级）与 `enabledProviderIds`（可多选）。
+- 音源页按钮改为 **使用 / 使用中** 开关；拖动行即调整优先级；点按行登录或设为首选。
+- 播放失败时按启用顺序依次换源（最多 2 次）。
+- `FEQQProvider` 完整实现：Cookie 持久化、`uin` 解析、搜索、歌单列表/详情、歌词、vcard 资料、vkey 播放。
+
+### 4.2 头像与云盘
+
+- 新增 `FESettings.lastLoginProviderId`，登录成功时记录；「我的」页按「自定义头像 → 最后登录音源 → 首个已登录音源」取图。
+- 头像支持相册自定义（裁剪为正方形，存 `Documents/d9_avatar.jpg`）。
+- 新增 `FECloudViewController`：WebDAV PROPFIND 列目录、文件夹下钻、音频文件下载到 `Documents/CloudMusic` 并直接播放。
+- 配置备份改为 plist + 歌单归档，恢复时真正写回本地歌单。
+
+### 4.3 品牌重命名
+
+- `CFBundleDisplayName` / `CFBundleExecutable` / `CFBundleName` = `D9Music`，`CFBundleIdentifier` = `com.d9music.app`。
+- Makefile、control、CI workflow、`make_ipa.sh`、WebDAV 默认路径统一为 `D9Music` / `/D9Music/`。
 
 ## 4. 本轮（1.2.0 / build 4）改动要点
 
@@ -94,7 +135,20 @@ B 站   x/web-interface/search/type             code=0 results=3
 
 ### 5.1 包级验证
 
-**当前版本 1.2.0 build 4**（GitHub Actions run `43136575280`，commit `539ceef`）：
+**当前版本 1.3.0 build 5**（GitHub Actions run `43234133270`，commit `0968460`）：
+
+```text
+IPA: artifacts/verified-ipas/D9Music-v1.3.0-build5-armv7.ipa
+size=199946 sha256=65F160F155AC70F08F782F9774287A34B60C1D316E51DC7F551FD5720044B408
+bundle=com.d9music.app version=1.3.0 build=5 minOS=9.0
+architectures=armv7 (cpu=12, subtype=9)
+Mach-O magic=0xfeedface
+bundle 内含图标 PNG=11（Icon / Icon@2x / Icon-60 / Icon-60@2x / Icon-60@3x /
+  Icon-Small / Icon-Small@2x / Icon-Small@3x / Icon-Small-40 / Icon-Small-40@2x / Icon-Small-40@3x）
+RESULT: OK
+```
+
+历史版本 1.2.0 build 4（上一版，仅供对照）：
 
 ```text
 IPA: artifacts/verified-ipas/FuoEvolve9-v1.2.0-build4-armv7.ipa
@@ -103,18 +157,6 @@ bundle=com.feeluown.fuoevolve9 version=1.2.0 build=4 minOS=9.0
 architectures=armv7 (cpu=12, subtype=9)
 Mach-O magic=0xfeedface
 NSAppTransportSecurity.NSAllowsArbitraryLoads=true
-bundle 内含图标 PNG=11（Icon / Icon@2x / Icon-60 / Icon-60@2x / Icon-60@3x /
-  Icon-Small / Icon-Small@2x / Icon-Small@3x / Icon-Small-40 / Icon-Small-40@2x / Icon-Small-40@3x）
-RESULT: OK
-```
-
-历史版本 1.0.0 build 2（仅作对照）：
-
-```text
-IPA: artifacts/verified-ipas/FuoEvolve9-v1.0.0-build2-armv7.ipa
-size=52293 sha256=B935646ED8482E4BD18D0429342BCC6987A869351671B014E59DFA1DE421CA46
-bundle=com.feeluown.fuoevolve9 version=1.0.0 build=2 minOS=9.0
-architectures=armv7 (cpu=12, subtype=9)
 RESULT: OK
 ```
 
@@ -135,8 +177,9 @@ RESULT: OK
 |---|---|
 | 代码托管 | GitHub `Daniel123999/FuoEvolve9`（主）+ Gitee `jyz2574461147/FuoEvolve9`（镜像） |
 | CI | GitHub Actions，`runs-on: macos-15`，Theos + `iPhoneOS9.3.sdk`，`TARGET=iphone:clang:9.3:9.0` |
-| 本次成功 | run `43136575280`，commit `539ceef`，产物 `FuoEvolve9-ipa` 162645 B（解包后 IPA 166815 B） |
-| 产物归档 | `artifacts/verified-ipas/FuoEvolve9-v1.2.0-build4-armv7.ipa`、`local-ipas/FuoEvolve9-latest-armv7.ipa` |
+| 本次成功（1.3.0） | run `43234133270`，commit `0968460`，产物 `D9Music-ipa` 195822 B（解包后 IPA 199946 B） |
+| 产物归档 | `artifacts/verified-ipas/D9Music-v1.3.0-build5-armv7.ipa`、`local-ipas/D9Music-latest-armv7.ipa` |
+| 上一次成功（1.2.0） | run `43136575280`，commit `539ceef`，`FuoEvolve9-v1.2.0-build4-armv7.ipa` |
 
 构建过程中真实遇到并修复的两个问题：
 
@@ -145,7 +188,7 @@ RESULT: OK
    `UITableViewDataSource` 必需方法，`-Werror,-Wprotocol` 直接报错。
    已补回 data source/delegate 与左滑「重命名/删除」动作，本地以 `-Werror` 全量复检 35 个 `.m` 通过。
 2. **包内缺图标（run `43136319416` 产物）**：`ios/Makefile` 未把 `ios/icons/*.png` 拷进 bundle，
-   `CFBundleIcons` 引用的 11 个 PNG 全部缺失。已加 `FuoEvolve9_RESOURCE_DIRS = icons` 修复。
+   `CFBundleIcons` 引用的 11 个 PNG 全部缺失。已加 `_RESOURCE_DIRS = icons` 修复（重命名为 D9Music 后仍保留）。
 
 > 注：另一账号 `giabana-cd40b232` 的 hosted runner 始终无法分配（
 > “The job was not acquired by Runner of type hosted”），该仓库已停用，构建统一走 `Daniel123999` 账号。
@@ -153,15 +196,15 @@ RESULT: OK
 
 ## 6. 未验证事项（必须明确）
 
-1. **1.2.0 build 4 已成功编译**（armv7、包含图标），但**从未在 iPhone 4S 真机上安装/启动** ——
-   启动崩溃、UI 布局、AVPlayer 实际播放、Cookie 登录、WebDAV 同步均未经过运行时验证。
+1. **1.3.0 build 5 已成功编译**（armv7、包含图标），但**从未在 iPhone 4S 真机上安装/启动** ——
+   启动崩溃、夜间模式配色、横屏布局、头像同步、QQ 音源、WebDAV 云盘下载均未经过运行时验证。
 2. 构建机为 GitHub Actions 的 macOS runner（clang + Theos），与本机 `-Werror` 静态检查一致，但静态检查不能替代真机运行。
 3. Gitee 公开下载未从本机成功获取（403），仅 GitHub 侧下载校验通过。
 4. VIP/版权歌曲仍无法播放（服务端 `url:null`），仅能自动切换音源兜底。
 
 ## 7. 下一步最小动作
 
-1. 把 `local-ipas/FuoEvolve9-latest-armv7.ipa` 装到已越狱 + AppSync Unified 的 4S 上，
-   实测：启动 → 搜索 → 点击播放、推荐页各模块、播放失败自动换源、Cookie 登录、收藏、WebDAV。
+1. 把 `local-ipas/D9Music-latest-armv7.ipa` 装到已越狱 + AppSync Unified 的 4S 上，
+   实测：启动 → 搜索 → 点击播放、推荐页各模块、播放失败自动换源、Cookie 登录、收藏、WebDAV、云盘下载、夜间模式、横屏。
 2. 依据真机崩溃日志/表现修 bug，再走一次 CI 出包。
-3. 补齐 QQ 音乐 API；再考虑云盘、下载与本地文件导入。
+3. 视需要补齐离线下载、云盘上传；再把仓库名从 `FuoEvolve9` 改为 `D9Music`。
