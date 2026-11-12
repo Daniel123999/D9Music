@@ -289,6 +289,8 @@
     [self applyCoverShapeForLandscape:landscape];
     [self layoutLyricsPageContents];
     [self updateRotationState];
+    self.progressSlider.hidden = self.showingLyrics && landscape;
+    self.timeLabel.hidden = self.showingLyrics && landscape;
 }
 
 - (void)layoutControlRowWithCenterX:(CGFloat)centerX y:(CGFloat)y compact:(BOOL)compact {

@@ -238,7 +238,14 @@ static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString 
     self.totalRequests = total;
     self.statusLabel.text = [NSString stringWithFormat:@"正在 %ld 个音源搜索「%@」…", (long)providers.count, keyword];
 
+    // 网络挂起时避免一直转圈
     __weak typeof(self) weakSelf = self;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(25.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || !strongSelf.searching) return;
+        strongSelf.pendingRequests = 0;
+        [strongSelf finishOneRequest];
+    });
     for (id<FEProviderProtocol> provider in providers) {
         [provider searchWithKeyword:keyword completion:^(NSArray<FETrack *> *tracks, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
