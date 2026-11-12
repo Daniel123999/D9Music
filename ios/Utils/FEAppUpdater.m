@@ -39,6 +39,11 @@ extern char **environ;
 @interface FEAppUpdater ()
 + (void)checkSources:(NSArray *)sources index:(NSInteger)index lastError:(NSError *)lastError
           completion:(void (^)(NSDictionary *, NSError *))completion;
++ (void)checkSourceHTML:(NSArray *)sources index:(NSInteger)index lastError:(NSError *)lastError
+             completion:(void (^)(NSDictionary *, NSError *))completion;
++ (void)finishSourceWithTag:(NSString *)tag ipaUrl:(NSString *)ipaUrl html:(NSString *)html
+                       host:(NSString *)host repo:(NSString *)repo
+                 completion:(void (^)(NSDictionary *, NSError *))completion;
 + (NSString *)tagFromUrl:(NSString *)url;
 + (NSString *)latestTagFromHtml:(NSString *)html repo:(NSString *)repo;
 + (NSString *)ipaAssetUrlFromHtml:(NSString *)html host:(NSString *)host repo:(NSString *)repo;
@@ -246,6 +251,71 @@ static NSInteger FECompareVersion(NSString *a, NSString *b) {
     NSDictionary *src = sources[index];
     NSString *host = src[@"host"] ?: @"";
     NSString *repo = src[@"repo"] ?: @"";
+
+    // 优先走 Release API（JSON，稳定），失败再回退解析 release 页面 HTML
+    NSString *apiURL = [host isEqualToString:@"https://gitee.com"]
+        ? [NSString stringWithFormat:@"https://gitee.com/api/v5/repos/%@/releases?page=1&per_page=1", repo]
+        : [NSString stringWithFormat:@"https://api.github.com/repos/%@/releases/latest", repo];
+    NSMutableURLRequest *apiRequest = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:apiURL]];
+    apiRequest.timeoutInterval = 20;
+    [apiRequest setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [apiRequest setValue:@"D9Music-iOS9" forHTTPHeaderField:@"User-Agent"];
+
+    [[FEUpdaterSession() dataTaskWithRequest:apiRequest
+                             completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSHTTPURLResponse *http = [response isKindOfClass:[NSHTTPURLResponse class]] ? (NSHTTPURLResponse *)response : nil;
+        if (!error && data.length > 0 && (!http || http.statusCode / 100 == 2)) {
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            if ([json isKindOfClass:[NSArray class]]) {
+                // Gitee 的 releases 列表是升序，需要自己挑版本号最大的一个
+                NSDictionary *best = nil;
+                for (id item in (NSArray *)json) {
+                    if (![item isKindOfClass:[NSDictionary class]]) continue;
+                    NSString *tag = item[@"tag_name"];
+                    if (![tag isKindOfClass:[NSString class]] || tag.length == 0) continue;
+                    if (best == nil) {
+                        best = item;
+                        continue;
+                    }
+                    NSString *bestTag = best[@"tag_name"];
+                    NSString *a = ([tag hasPrefix:@"v"] || [tag hasPrefix:@"V"]) ? [tag substringFromIndex:1] : tag;
+                    NSString *b = ([bestTag hasPrefix:@"v"] || [bestTag hasPrefix:@"V"]) ? [bestTag substringFromIndex:1] : bestTag;
+                    if (FECompareVersion(a, b) > 0) best = item;
+                }
+                json = best;
+            }
+            if ([json isKindOfClass:[NSDictionary class]]) {
+                NSString *tag = [json[@"tag_name"] isKindOfClass:[NSString class]] ? json[@"tag_name"] : nil;
+                NSString *body = [json[@"body"] isKindOfClass:[NSString class]] ? json[@"body"] : @"";
+                NSString *ipaUrl = nil;
+                NSArray *assets = json[@"assets"];
+                if ([assets isKindOfClass:[NSArray class]]) {
+                    for (NSDictionary *asset in assets) {
+                        NSString *name = [asset[@"name"] isKindOfClass:[NSString class]] ? asset[@"name"] : nil;
+                        if (![[name lowercaseString] hasSuffix:@".ipa"]) continue;
+                        NSString *download = asset[@"browser_download_url"];
+                        if (![download isKindOfClass:[NSString class]]) download = asset[@"download_url"];
+                        if ([download isKindOfClass:[NSString class]]) {
+                            ipaUrl = download;
+                            break;
+                        }
+                    }
+                }
+                if (tag.length > 0) {
+                    [self finishSourceWithTag:tag ipaUrl:ipaUrl html:body host:host repo:repo completion:completion];
+                    return;
+                }
+            }
+        }
+        [self checkSourceHTML:sources index:index lastError:error completion:completion];
+    }] resume];
+}
+
++ (void)checkSourceHTML:(NSArray *)sources index:(NSInteger)index lastError:(NSError *)lastError
+             completion:(void (^)(NSDictionary *, NSError *))completion {
+    NSDictionary *src = sources[index];
+    NSString *host = src[@"host"] ?: @"";
+    NSString *repo = src[@"repo"] ?: @"";
     NSString *page = [NSString stringWithFormat:@"%@/%@/releases/latest", host, repo];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:page]];
     request.timeoutInterval = 20;
@@ -262,27 +332,34 @@ static NSInteger FECompareVersion(NSString *a, NSString *b) {
         if (!tag.length || [tag isEqualToString:@"releases"] || [tag isEqualToString:@"latest"]) {
             tag = [self latestTagFromHtml:html repo:repo];
         }
-        NSString *ipaUrl = [self ipaAssetUrlFromHtml:html host:host repo:repo];
-        if (!ipaUrl.length && tag.length) {
-            ipaUrl = [NSString stringWithFormat:@"%@/%@/releases/download/%@/D9Music.ipa", host, repo, tag];
-        }
         if (!tag.length || [tag isEqualToString:@"releases"]) {
             [self checkSources:sources index:index + 1 lastError:error completion:completion];
             return;
         }
-        NSString *version = ([tag hasPrefix:@"v"] || [tag hasPrefix:@"V"]) ? [tag substringFromIndex:1] : tag;
-        NSString *remoteBuild = [self buildFromHtml:html];
-        NSString *full = remoteBuild.length ? [NSString stringWithFormat:@"%@ (build %@)", version, remoteBuild] : version;
-        NSDictionary *info = @{
-            @"tag": tag,
-            @"version": version,
-            @"fullVersion": full,
-            @"build": remoteBuild ?: @"",
-            @"ipaUrl": ipaUrl ?: @"",
-            @"host": host
-        };
-        dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(info, nil); });
+        NSString *ipaUrl = [self ipaAssetUrlFromHtml:html host:host repo:repo];
+        [self finishSourceWithTag:tag ipaUrl:ipaUrl html:html host:host repo:repo completion:completion];
     }] resume];
+}
+
++ (void)finishSourceWithTag:(NSString *)tag ipaUrl:(NSString *)ipaUrl html:(NSString *)html
+                       host:(NSString *)host repo:(NSString *)repo
+                 completion:(void (^)(NSDictionary *, NSError *))completion {
+    NSString *resolvedIPA = ipaUrl;
+    if (!resolvedIPA.length) {
+        resolvedIPA = [NSString stringWithFormat:@"%@/%@/releases/download/%@/D9Music.ipa", host, repo, tag];
+    }
+    NSString *version = ([tag hasPrefix:@"v"] || [tag hasPrefix:@"V"]) ? [tag substringFromIndex:1] : tag;
+    NSString *remoteBuild = [self buildFromHtml:html ?: @""];
+    NSString *full = remoteBuild.length ? [NSString stringWithFormat:@"%@ (build %@)", version, remoteBuild] : version;
+    NSDictionary *info = @{
+        @"tag": tag,
+        @"version": version,
+        @"fullVersion": full,
+        @"build": remoteBuild ?: @"",
+        @"ipaUrl": resolvedIPA,
+        @"host": host
+    };
+    dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(info, nil); });
 }
 
 + (NSString *)tagFromUrl:(NSString *)url {
