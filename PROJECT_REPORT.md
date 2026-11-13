@@ -13,13 +13,13 @@
 ```text
 应用名：D9Music
 Bundle ID：com.d9music.app
-版本：1.3.3 (build 8)
+版本：1.3.4 (build 9)
 设备/切片：iPhone 4S，armv7（cputype=12, cpusubtype=9）
 最低系统：iOS 9.0
 SDK：iPhoneOS9.3.sdk
 TARGET：iphone:clang:9.3:9.0
 ARCHS：armv7
-构建：Theos（GitHub Actions macos-15）
+构建：Theos（GitHub Actions，Linux runner + 预编译 iOS 工具链；macOS runner 备用）
 分发：未签名 IPA（越狱 + AppSync Unified）
 ```
 
@@ -63,7 +63,7 @@ ARCHS：armv7
 > 注意：上表“已完成”指源码已写入、通过静态检查，并已由 GitHub Actions（macos-15 + Theos）成功交叉编译为 armv7 IPA；
 > **尚未在 iPhone 4S 真机上安装运行**（见第 6 节）。
 
-## 4. 本轮改动要点（1.3.0 → 1.3.3）
+## 4. 本轮改动要点（1.3.0 → 1.3.4）
 
 ### 4.0 设置、主题与横屏
 
@@ -180,22 +180,41 @@ B 站   x/web-interface/search/type             code=0 results=3
 | 退出播放页 | 关闭时强制回到竖屏并触发旋转，外部页面不再停留横屏 |
 | CI | macOS hosted runner 无法分配，新增 Linux (ubuntu) + Theos 预编译工具链构建通道 |
 
+### 4.7 1.3.4 改动
+
+| 项目 | 实现 |
+|---|---|
+| 歌词高亮（横屏/竖屏） | 歌词改为逐行 UILabel 渲染，当前行粗体放大+纯白、其余行半透明；`currentIndex` 变化时只更新样式，避免整段富文本重排导致高亮失效 |
+| 歌词底板 | 删除歌词页 `0.06` 半透明白底，横屏与竖屏都直接叠在渐变背景上 |
+| 自动滚动 | 按当前行实际 `frame` 计算偏移（逐行高度自适应），替换原来按固定行高估算的做法 |
+| 迷你播放器切歌键 | 切歌按钮改为 `FETheme primary` 着色（与播放/暂停键一致），不再与白色卡片同色 |
+| 搜索原唱优先 | 搜索词按分隔符拆成 token；歌名命中 + 歌手命中加分、音源原始排序越靠前加分，标题/歌手含“翻唱/cover/伴奏/remix”等标记扣分 |
+| 歌词解析 | 切歌解析 LRC 时重置 `currentIndex`，避免沿用上一首的行号高亮到错误行 |
+
 ## 5. 构建与验证证据
 
 ### 5.1 包级验证
 
-**当前版本 1.3.3 build 8**（GitHub Actions Linux run `43260171241`，commit `298ad27`）：
+**当前版本 1.3.4 build 9**（GitHub Actions Linux run `43349919617`，commit `32d4fdc`）：
 
 ```text
-IPA: artifacts/verified-ipas/D9Music-v1.3.3-build8-armv7.ipa
-size=254807 sha256=E7E2CDD62F5B68818275AAE73A925EC2FF1973007A1DD601EDDC34CD74883437
-bundle=com.d9music.app version=1.3.3 build=8 minOS=9.0
+IPA: artifacts/verified-ipas/D9Music-v1.3.4-build9-armv7.ipa
+size=257520 sha256=1295EAD03A52EBAE3DCFE1ADCED039429334C046D5DDC83C3CF29F9B6D350318
+bundle=com.d9music.app version=1.3.4 build=9 minOS=9.0
 architectures=armv7 (cpu=12, subtype=9)
 Mach-O magic=0xfeedface
 bundle 内含图标 PNG=11（Icon / Icon@2x / Icon-60 / Icon-60@2x / Icon-60@3x /
   Icon-Small / Icon-Small@2x / Icon-Small@3x / Icon-Small-40 / Icon-Small-40@2x / Icon-Small-40@3x）
 构建方式：Ubuntu + Theos + L1ghtmann iOS toolchain，FINALPACKAGE=1
 Release 附件 D9Music.ipa 下载 SHA256 一致
+RESULT: OK
+```
+
+历史版本 1.3.3 build 8（仅供对照）：
+
+```text
+IPA: 254807 B sha256=E7E2CDD62F5B68818275AAE73A925EC2FF1973007A1DD601EDDC34CD74883437
+bundle=com.d9music.app version=1.3.3 build=8 minOS=9.0
 RESULT: OK
 ```
 
@@ -223,14 +242,15 @@ RESULT: OK
 
 | 平台 | Release | 附件 | 公开下载校验 |
 |---|---|---|---|
-| GitHub | v1.3.3 | `D9Music.ipa` 254807 B | **通过**，下载 SHA256 = `E7E2CDD6…` 与本地构建一致 |
-| Gitee | v1.3.3 (id 1302980) | `D9Music.ipa` 254807 B | 已上传；本机请求被 Gitee WAF 403，**未完成公开下载校验** |
+| GitHub | v1.3.4 | `D9Music.ipa` 257520 B | **通过**，下载 SHA256 = `1295EAD0…` 与本地构建一致 |
+| Gitee | v1.3.4 (id 1303583) | `D9Music.ipa` 257520 B | 已上传，附件大小一致；本机请求仍被 Gitee WAF 403，**未完成公开下载校验** |
+| GitHub | v1.3.3 | `D9Music.ipa` 254807 B | 历史版本，已校验 |
 | GitHub | v1.3.2 | `D9Music.ipa` 251234 B | 历史版本，已校验 |
 | GitHub | v1.0.0 (id 438835569) | `FuoEvolve9.ipa` 52293 B | 历史版本，已校验 |
 
 - 下载地址
-  - GitHub: https://github.com/Daniel123999/D9Music/releases/download/v1.3.3/D9Music.ipa
-  - Gitee: https://gitee.com/jyz2574461147/D9Music/releases/download/v1.3.3/D9Music.ipa
+  - GitHub: https://github.com/Daniel123999/D9Music/releases/download/v1.3.4/D9Music.ipa
+  - Gitee: https://gitee.com/jyz2574461147/D9Music/releases/download/v1.3.4/D9Music.ipa
 
 ### 5.3 构建通道（2026-11-12 打通）
 
@@ -239,9 +259,10 @@ RESULT: OK
 | 代码托管 | GitHub `Daniel123999/D9Music`（主）+ Gitee `jyz2574461147/D9Music`（镜像） |
 | CI（macOS） | `runs-on: macos-15`，Theos + `iPhoneOS9.3.sdk`，`TARGET=iphone:clang:9.3:9.0` |
 | CI（Linux，当前可用） | `runs-on: ubuntu-latest` + Theos + L1ghtmann iOS toolchain，`FINALPACKAGE=1` |
-| 本次成功（1.3.3） | Linux run `43260171241`，commit `298ad27`，产物 `D9Music-ipa-linux` 250534 B（解包后 IPA 254807 B） |
-| 产物归档 | `artifacts/verified-ipas/D9Music-v1.3.3-build8-armv7.ipa`、`local-ipas/D9Music-latest-armv7.ipa` |
-| 上一次成功（1.3.2） | macOS run `43248362819`，commit `49b997b`，251234 B |
+| 本次成功（1.3.4） | Linux run `43349919617`，commit `32d4fdc`，产物 `D9Music-ipa-linux` 255231 B（解包后 IPA 257520 B） |
+| 产物归档 | `artifacts/verified-ipas/D9Music-v1.3.4-build9-armv7.ipa`、`local-ipas/D9Music-latest-armv7.ipa` |
+| 上一次成功（1.3.3） | Linux run `43260171241`，commit `298ad27`，254807 B |
+| 更早（1.3.2） | macOS run `43248362819`，commit `49b997b`，251234 B |
 
 ### 5.3.1 本次构建故障与绕行（2026-11-12/13）
 
@@ -267,9 +288,9 @@ RESULT: OK
 
 ## 6. 未验证事项（必须明确）
 
-1. **1.3.3 build 8 已成功编译**（Linux + Theos，armv7、包含图标），但**从未在 iPhone 4S 真机上安装/启动** ——
-   启动崩溃、圆形黑胶旋转、迷你播放器关闭、歌词高亮滚动、横屏布局、夜间模式切换、搜索分类与性能表现均未经过运行时验证。
-2. 构建机为 GitHub Actions 的 Ubuntu runner（Theos + 预编译 iOS 工具链），与本机 `-Werror` 静态检查（40 个 `.m`）一致，但静态检查不能替代真机运行。
+1. **1.3.4 build 9 已成功编译**（Linux + Theos，armv7、包含图标），但**从未在 iPhone 4S 真机上安装/启动** ——
+   逐行歌词高亮与自动滚动、歌词无底板后的可读性、迷你播放器切歌键颜色、搜索原唱排序效果、横屏布局、夜间模式切换均未经过运行时验证。
+2. 构建机为 GitHub Actions 的 Ubuntu runner（Theos + 预编译 iOS 工具链）；本机已用 clang 以 `-Werror` 对 40 个 `.m` 全量静态检查并通过，但静态检查不能替代真机运行。
 3. Gitee 公开下载未从本机成功获取（403），仅 GitHub 侧下载校验通过。
 4. VIP/版权歌曲仍无法播放（服务端 `url:null`），仅能自动切换音源兜底；无损音质同样受账号权限限制。
 5. 搜索的「匹配度」为客户端简单打分（完全匹配/前缀/包含/歌手包含），不是服务端排序。
