@@ -35,7 +35,8 @@
 
 @property (nonatomic, strong) UIView *lyricsPage;
 @property (nonatomic, strong) UIScrollView *lyricsScroll;
-@property (nonatomic, strong) UILabel *lyricsLabel;
+@property (nonatomic, strong) NSMutableArray<UILabel *> *lyricsLineLabels;
+@property (nonatomic, strong) NSMutableArray<NSNumber *> *lyricsLineIndexes;
 @property (nonatomic, strong) UILabel *lyricsHint;
 @property (nonatomic, assign) BOOL showingLyrics;
 @property (nonatomic, assign) BOOL landscapeLayout;
@@ -193,8 +194,15 @@
 }
 
 - (void)buildLyricsPage {
+    self.lyricsLineLabels = [NSMutableArray array];
+    self.lyricsLineIndexes = [NSMutableArray array];
+    self.renderedLyricCount = -1;
+    self.lastHighlightedLyricIndex = -1;
+    self.lastLyricScrollOffset = -1;
+
+    // 歌词区域不再使用半透明底板，直接叠在渐变背景上
     self.lyricsPage = [[UIView alloc] initWithFrame:CGRectZero];
-    self.lyricsPage.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.06];
+    self.lyricsPage.backgroundColor = [UIColor clearColor];
     self.lyricsPage.layer.cornerRadius = 20;
     self.lyricsPage.layer.masksToBounds = YES;
     self.lyricsPage.hidden = YES;
@@ -210,14 +218,6 @@
     self.lyricsScroll = [[UIScrollView alloc] initWithFrame:CGRectZero];
     self.lyricsScroll.showsVerticalScrollIndicator = NO;
     [self.lyricsPage addSubview:self.lyricsScroll];
-
-    self.lyricsLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.lyricsLabel.numberOfLines = 0;
-    self.lyricsLabel.font = [UIFont systemFontOfSize:13];
-    self.lyricsLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.82];
-    self.lyricsLabel.textAlignment = NSTextAlignmentCenter;
-    self.lyricsLabel.text = @"暂无歌词";
-    [self.lyricsScroll addSubview:self.lyricsLabel];
 }
 
 - (void)viewWillLayoutSubviews {
@@ -401,76 +401,106 @@
     [self updateRotationState];
 }
 
-- (NSAttributedString *)fe_attributedLyrics {
-    NSArray<FELyricLine *> *lines = [FELyricsManager sharedManager].lines;
-    NSInteger current = [FELyricsManager sharedManager].currentIndex;
-    CGFloat normalSize = self.landscapeLayout ? 13.5 : 13;
-
-    NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
-    style.alignment = NSTextAlignmentCenter;
-    style.lineSpacing = 5;
-
-    UIFont *normalFont = [UIFont systemFontOfSize:normalSize];
-    NSDictionary *normalAttrs = @{NSFontAttributeName: normalFont,
-                                  NSForegroundColorAttributeName: [[UIColor whiteColor] colorWithAlphaComponent:0.42],
-                                  NSParagraphStyleAttributeName: style};
-    NSDictionary *highlightAttrs = @{NSFontAttributeName: [UIFont boldSystemFontOfSize:normalSize + 1],
-                                     NSForegroundColorAttributeName: [UIColor whiteColor],
-                                     NSParagraphStyleAttributeName: style};
-
-    NSMutableAttributedString *result = [[NSMutableAttributedString alloc] init];
-    if (lines.count == 0) {
-        [result appendAttributedString:[[NSAttributedString alloc] initWithString:@"暂无歌词" attributes:normalAttrs]];
-        return result;
+- (void)rebuildLyricLineLabels {
+    for (UILabel *label in self.lyricsLineLabels) {
+        [label removeFromSuperview];
     }
+    [self.lyricsLineLabels removeAllObjects];
+    [self.lyricsLineIndexes removeAllObjects];
 
-    BOOL hasText = NO;
+    NSArray<FELyricLine *> *lines = [FELyricsManager sharedManager].lines;
     for (NSInteger i = 0; i < (NSInteger)lines.count; i++) {
         NSString *text = lines[i].text;
         if (text.length == 0) continue;
-        if (hasText) {
-            [result appendAttributedString:[[NSAttributedString alloc] initWithString:@"\n" attributes:normalAttrs]];
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectZero];
+        label.numberOfLines = 0;
+        label.textAlignment = NSTextAlignmentCenter;
+        label.text = text;
+        [self.lyricsScroll addSubview:label];
+        [self.lyricsLineLabels addObject:label];
+        [self.lyricsLineIndexes addObject:@(i)];
+    }
+
+    if (self.lyricsLineLabels.count == 0) {
+        UILabel *placeholder = [[UILabel alloc] initWithFrame:CGRectZero];
+        placeholder.numberOfLines = 0;
+        placeholder.textAlignment = NSTextAlignmentCenter;
+        placeholder.text = @"暂无歌词";
+        placeholder.font = [UIFont systemFontOfSize:13];
+        placeholder.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.45];
+        [self.lyricsScroll addSubview:placeholder];
+        [self.lyricsLineLabels addObject:placeholder];
+        [self.lyricsLineIndexes addObject:@(-1)];
+    }
+
+    NSInteger current = [FELyricsManager sharedManager].currentIndex;
+    self.renderedLyricCount = (NSInteger)lines.count;
+    self.lastHighlightedLyricIndex = current;
+    self.lastLyricScrollOffset = -1;
+    [self applyLyricHighlightForIndex:current];
+    [self layoutLyricLineLabels];
+}
+
+/// 只改当前行的字体/颜色，其余行保持半透明，确保高亮一定可见
+- (void)applyLyricHighlightForIndex:(NSInteger)index {
+    CGFloat normalSize = self.landscapeLayout ? 14.0 : 13.5;
+    for (NSUInteger k = 0; k < self.lyricsLineLabels.count; k++) {
+        UILabel *label = self.lyricsLineLabels[k];
+        NSInteger lineIndex = self.lyricsLineIndexes[k].integerValue;
+        if (lineIndex < 0) {
+            label.font = [UIFont systemFontOfSize:normalSize];
+            label.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.45];
+            continue;
         }
-        NSDictionary *attrs = (i == current) ? highlightAttrs : normalAttrs;
-        [result appendAttributedString:[[NSAttributedString alloc] initWithString:text attributes:attrs]];
-        hasText = YES;
+        if (index >= 0 && lineIndex == index) {
+            label.font = [UIFont boldSystemFontOfSize:normalSize + 2];
+            label.textColor = [UIColor whiteColor];
+        } else {
+            label.font = [UIFont systemFontOfSize:normalSize];
+            label.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.42];
+        }
     }
-    if (!hasText) {
-        [result appendAttributedString:[[NSAttributedString alloc] initWithString:@"暂无歌词" attributes:normalAttrs]];
+}
+
+- (void)layoutLyricLineLabels {
+    CGFloat scrollWidth = self.lyricsScroll.bounds.size.width;
+    if (scrollWidth <= 1) return;
+    CGFloat width = MAX(60, scrollWidth - 24);
+    CGFloat y = 14;
+    for (UILabel *label in self.lyricsLineLabels) {
+        CGSize fit = [label sizeThatFits:CGSizeMake(width, MAXFLOAT)];
+        CGFloat lineHeight = ceil(fit.height) + 8;
+        label.frame = CGRectMake(12, y, width, lineHeight);
+        y += lineHeight;
     }
-    return result;
+    self.lyricsScroll.contentSize = CGSizeMake(scrollWidth, MAX(y + 14, self.lyricsScroll.bounds.size.height));
 }
 
 - (void)layoutLyricsText {
-    self.lyricsLabel.attributedText = [self fe_attributedLyrics];
-
-    CGFloat width = MAX(60, self.lyricsScroll.bounds.size.width - 24);
-    CGSize fit = [self.lyricsLabel sizeThatFits:CGSizeMake(width, MAXFLOAT)];
-    self.lyricsLabel.frame = CGRectMake(12, 10, width, ceil(fit.height) + 8);
-    self.lyricsScroll.contentSize = CGSizeMake(self.lyricsScroll.bounds.size.width, self.lyricsLabel.frame.size.height + 20);
-    self.renderedLyricCount = (NSInteger)[FELyricsManager sharedManager].lines.count;
-    self.lastHighlightedLyricIndex = [FELyricsManager sharedManager].currentIndex;
-    self.lastLyricScrollOffset = -1;
+    NSInteger count = (NSInteger)[FELyricsManager sharedManager].lines.count;
+    if (count != self.renderedLyricCount || self.lyricsLineLabels.count == 0) {
+        [self rebuildLyricLineLabels];
+    } else {
+        [self applyLyricHighlightForIndex:[FELyricsManager sharedManager].currentIndex];
+        [self layoutLyricLineLabels];
+    }
 }
 
 - (void)updateLyricsHighlightIfNeeded {
     NSInteger current = [FELyricsManager sharedManager].currentIndex;
     if (current == self.lastHighlightedLyricIndex) return;
     self.lastHighlightedLyricIndex = current;
-    self.lyricsLabel.attributedText = [self fe_attributedLyrics];
-
-    CGFloat width = MAX(60, self.lyricsScroll.bounds.size.width - 24);
-    CGSize fit = [self.lyricsLabel sizeThatFits:CGSizeMake(width, MAXFLOAT)];
-    self.lyricsLabel.frame = CGRectMake(12, 10, width, ceil(fit.height) + 8);
-    self.lyricsScroll.contentSize = CGSizeMake(self.lyricsScroll.bounds.size.width, self.lyricsLabel.frame.size.height + 20);
+    [self applyLyricHighlightForIndex:current];
+    [self layoutLyricLineLabels];
 }
 
 - (void)scrollLyricsToCurrentLine:(BOOL)animated {
     NSInteger index = [FELyricsManager sharedManager].currentIndex;
     if (index < 0) return;
-    CGFloat normalSize = self.landscapeLayout ? 13.5 : 13;
-    CGFloat lineHeight = [UIFont systemFontOfSize:normalSize].lineHeight + 5;
-    CGFloat offset = index * lineHeight + 10 - self.lyricsScroll.bounds.size.height / 2 + lineHeight / 2;
+    NSUInteger position = [self.lyricsLineIndexes indexOfObject:@(index)];
+    if (position == NSNotFound || position >= self.lyricsLineLabels.count) return;
+    UILabel *label = self.lyricsLineLabels[position];
+    CGFloat offset = CGRectGetMidY(label.frame) - self.lyricsScroll.bounds.size.height / 2;
     CGFloat maxOffset = MAX(0, self.lyricsScroll.contentSize.height - self.lyricsScroll.bounds.size.height);
     offset = MAX(0, MIN(offset, maxOffset));
     if (fabs(offset - self.lastLyricScrollOffset) < 4) return;

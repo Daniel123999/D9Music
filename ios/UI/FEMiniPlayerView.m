@@ -48,7 +48,13 @@
         [self addSubview:_playButton];
 
         _nextButton = [UIButton buttonWithType:UIButtonTypeCustom];
-        _nextButton.tintColor = [FETheme textPrimary];
+        _nextButton.tintColor = [FETheme primary];
+        // 与播放/暂停按钮同色，避免白色按钮落在白色卡片上看不见
+        [_nextButton setImage:[FEIconView imageWithType:FEIconTypeNext
+                                                   size:CGSizeMake(20, 20)
+                                                  color:[FETheme primary]
+                                              lineWidth:2.0]
+                     forState:UIControlStateNormal];
         [_nextButton addTarget:self action:@selector(nextTapped) forControlEvents:UIControlEventTouchUpInside];
         [self addSubview:_nextButton];
 

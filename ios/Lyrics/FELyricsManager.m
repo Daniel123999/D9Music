@@ -22,6 +22,7 @@
 
 - (void)parseLRC:(NSString *)lrcContent {
     [self.lines removeAllObjects];
+    self.currentIndex = -1;
     if (!lrcContent) return;
     
     NSArray *linesArr = [lrcContent componentsSeparatedByString:@"\n"];

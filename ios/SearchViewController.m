@@ -10,19 +10,83 @@
 #import "FETrackListViewController.h"
 #import "FERootTabBarController.h"
 
-static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString *keyword) {
-    if (primary.length == 0 || keyword.length == 0) return 0;
-    NSString *text = [primary lowercaseString];
-    NSString *key = [keyword lowercaseString];
+static NSArray<NSString *> *FESearchTokens(NSString *keyword) {
+    if (keyword.length == 0) return @[];
+    static NSCharacterSet *separators = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        separators = [NSCharacterSet characterSetWithCharactersInString:@" \t\r\n-—_/|·,，.。:：()（）[]【】"];
+    });
+    NSArray *parts = [[keyword lowercaseString] componentsSeparatedByCharactersInSet:separators];
+    NSMutableArray<NSString *> *tokens = [NSMutableArray array];
+    for (NSString *part in parts) {
+        if (part.length > 0) [tokens addObject:part];
+    }
+    return tokens;
+}
+
+static NSInteger FESearchTextScore(NSString *text, NSString *key) {
+    if (text.length == 0 || key.length == 0) return 0;
+    NSString *lower = [text lowercaseString];
+    if ([lower isEqualToString:key]) return 120;
+    if ([lower hasPrefix:key]) return 90;
+    if ([lower rangeOfString:key].location != NSNotFound) return 60;
+    return 0;
+}
+
+/// 翻唱/伴奏/改编等标记：用于把“非原唱版本”往后排
+static BOOL FESearchIsCoverText(NSString *text) {
+    if (text.length == 0) return NO;
+    NSString *lower = [text lowercaseString];
+    NSArray<NSString *> *markers = @[@"翻唱", @"翻自", @"原唱", @"伴奏", @"改编",
+                                     @"纯音乐", @"钢琴版", @"吉他版", @"dj版", @"抖音",
+                                     @"女声版", @"男声版", @"童声版", @"现场版", @"演唱会"];
+    for (NSString *marker in markers) {
+        if ([lower rangeOfString:marker].location != NSNotFound) return YES;
+    }
+    static NSRegularExpression *regex = nil;
+    static dispatch_once_t onceToken2;
+    dispatch_once(&onceToken2, ^{
+        regex = [NSRegularExpression regularExpressionWithPattern:@"\\b(cover|karaoke|instrumental|remix|mashup)\\b"
+                                                          options:0
+                                                            error:nil];
+    });
+    return [regex firstMatchInString:lower options:0 range:NSMakeRange(0, lower.length)] != nil;
+}
+
+static NSInteger FESearchTrackScore(FETrack *track, NSArray<NSString *> *tokens, BOOL wantsCover, NSInteger rank) {
+    NSString *title = track.title ?: @"";
+    NSString *artist = track.artist ?: @"";
+
+    NSInteger titleScore = 0;
+    NSInteger artistScore = 0;
+    for (NSString *token in tokens) {
+        titleScore = MAX(titleScore, FESearchTextScore(title, token));
+        artistScore = MAX(artistScore, FESearchTextScore(artist, token));
+    }
+
+    NSInteger score = titleScore;
+    // 歌手命中（尤其是搜索词里带歌手名）说明更可能是原唱版本
+    if (artistScore > 0) score += 20 + artistScore / 2;
+
+    // 同一音源内越靠前越可信：原唱通常排在翻唱前面
+    score += MAX(0, 20 - rank);
+
+    if (!wantsCover && titleScore > 0 && (FESearchIsCoverText(title) || FESearchIsCoverText(artist))) {
+        score -= 45;
+    }
+    return score;
+}
+
+static NSString *FESearchTrackKey(FETrack *track) {
+    return [NSString stringWithFormat:@"%@|%@",
+            track.providerId ?: @"", track.trackId.length > 0 ? track.trackId : (track.title ?: @"")];
+}
+
+static NSInteger FESearchNameScore(NSString *name, NSArray<NSString *> *tokens) {
     NSInteger score = 0;
-    if ([text isEqualToString:key]) {
-        score = 120;
-    } else if ([text hasPrefix:key]) {
-        score = 90;
-    } else if ([text rangeOfString:key].location != NSNotFound) {
-        score = 60;
-    } else if (secondary.length > 0 && [[secondary lowercaseString] rangeOfString:key].location != NSNotFound) {
-        score = 35;
+    for (NSString *token in tokens) {
+        score = MAX(score, FESearchTextScore(name, token));
     }
     return score;
 }
@@ -102,6 +166,8 @@ static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString 
 @property (nonatomic, copy) NSString *keyword;
 
 @property (nonatomic, strong) NSMutableArray<FETrack *> *songs;
+/// trackKey -> 该歌曲在其音源原始结果里的位置，用于“原唱优先”排序
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *songRanks;
 @property (nonatomic, strong) NSMutableArray<FEPlaylist *> *playlists;
 @property (nonatomic, strong) NSMutableArray<FEPlaylist *> *albums;
 @property (nonatomic, strong) NSMutableArray<FEPlaylist *> *artists;
@@ -119,6 +185,7 @@ static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString 
     self.title = @"搜索";
     self.view.backgroundColor = [FETheme background];
     self.songs = [NSMutableArray array];
+    self.songRanks = [NSMutableDictionary dictionary];
     self.playlists = [NSMutableArray array];
     self.albums = [NSMutableArray array];
     self.artists = [NSMutableArray array];
@@ -221,6 +288,7 @@ static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString 
     self.keyword = keyword;
     self.retryButton.hidden = YES;
     [self.songs removeAllObjects];
+    [self.songRanks removeAllObjects];
     [self.playlists removeAllObjects];
     [self.albums removeAllObjects];
     [self.artists removeAllObjects];
@@ -251,7 +319,13 @@ static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString 
             dispatch_async(dispatch_get_main_queue(), ^{
                 __strong typeof(weakSelf) strongSelf = weakSelf;
                 if (!strongSelf) return;
-                [strongSelf.songs addObjectsFromArray:tracks ?: @[]];
+                NSArray<FETrack *> *list = tracks ?: @[];
+                for (NSInteger i = 0; i < (NSInteger)list.count; i++) {
+                    FETrack *track = list[i];
+                    NSString *key = FESearchTrackKey(track);
+                    if (strongSelf.songRanks[key] == nil) strongSelf.songRanks[key] = @(i);
+                }
+                [strongSelf.songs addObjectsFromArray:list];
                 [strongSelf finishOneRequest];
             });
         }];
@@ -311,26 +385,38 @@ static NSInteger FESearchScore(NSString *primary, NSString *secondary, NSString 
 
 - (void)sortResults {
     NSString *keyword = self.keyword ?: @"";
+    NSArray<NSString *> *tokens = FESearchTokens(keyword);
+    BOOL wantsCover = FESearchIsCoverText(keyword);
+    NSDictionary<NSString *, NSNumber *> *ranks = self.songRanks;
+
     [self.songs sortUsingComparator:^NSComparisonResult(FETrack *a, FETrack *b) {
-        NSInteger sa = FESearchScore(a.title, a.artist, keyword);
-        NSInteger sb = FESearchScore(b.title, b.artist, keyword);
+        NSInteger rankA = [ranks[FESearchTrackKey(a)] integerValue];
+        NSInteger rankB = [ranks[FESearchTrackKey(b)] integerValue];
+        NSInteger sa = FESearchTrackScore(a, tokens, wantsCover, rankA);
+        NSInteger sb = FESearchTrackScore(b, tokens, wantsCover, rankB);
         if (sa != sb) return sa > sb ? NSOrderedAscending : NSOrderedDescending;
-        return [a.title localizedCaseInsensitiveCompare:b.title];
+        NSComparisonResult titleResult = [(a.title ?: @"") localizedCaseInsensitiveCompare:(b.title ?: @"")];
+        if (titleResult != NSOrderedSame) return titleResult;
+        return [(a.artist ?: @"") localizedCaseInsensitiveCompare:(b.artist ?: @"")];
     }];
+
     [self.playlists sortUsingComparator:^NSComparisonResult(FEPlaylist *a, FEPlaylist *b) {
-        NSInteger sa = FESearchScore(a.name, nil, keyword);
-        NSInteger sb = FESearchScore(b.name, nil, keyword);
-        return sa >= sb ? NSOrderedAscending : NSOrderedDescending;
+        NSInteger sa = FESearchNameScore(a.name, tokens);
+        NSInteger sb = FESearchNameScore(b.name, tokens);
+        if (sa != sb) return sa > sb ? NSOrderedAscending : NSOrderedDescending;
+        return [(a.name ?: @"") localizedCaseInsensitiveCompare:(b.name ?: @"")];
     }];
     [self.albums sortUsingComparator:^NSComparisonResult(FEPlaylist *a, FEPlaylist *b) {
-        NSInteger sa = FESearchScore(a.name, nil, keyword);
-        NSInteger sb = FESearchScore(b.name, nil, keyword);
-        return sa >= sb ? NSOrderedAscending : NSOrderedDescending;
+        NSInteger sa = FESearchNameScore(a.name, tokens);
+        NSInteger sb = FESearchNameScore(b.name, tokens);
+        if (sa != sb) return sa > sb ? NSOrderedAscending : NSOrderedDescending;
+        return [(a.name ?: @"") localizedCaseInsensitiveCompare:(b.name ?: @"")];
     }];
     [self.artists sortUsingComparator:^NSComparisonResult(FEPlaylist *a, FEPlaylist *b) {
-        NSInteger sa = FESearchScore(a.name, nil, keyword);
-        NSInteger sb = FESearchScore(b.name, nil, keyword);
-        return sa >= sb ? NSOrderedAscending : NSOrderedDescending;
+        NSInteger sa = FESearchNameScore(a.name, tokens);
+        NSInteger sb = FESearchNameScore(b.name, tokens);
+        if (sa != sb) return sa > sb ? NSOrderedAscending : NSOrderedDescending;
+        return [(a.name ?: @"") localizedCaseInsensitiveCompare:(b.name ?: @"")];
     }];
 }
 
